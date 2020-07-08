@@ -1,12 +1,11 @@
 #include "TerminalDispatch.h"
 
 #include <QTextBoundaryFinder>
-#include "Config/Preferences.h"
 
 TerminalDispatch::TerminalDispatch(ITerminal *terminal)
     : _terminal{terminal},
-      _foreColor(appconf->profile()->foreground()),
-      _backColor(appconf->profile()->background()),
+      _foreColor(TextColor::WindowText),
+      _backColor(TextColor::Window),
       _styles(TextStyle::Normal) {}
 
 void TerminalDispatch::Execute(const wchar_t wchControl) {
@@ -288,8 +287,8 @@ void TerminalDispatch::SetGraphicsRendition(
     opt = options.at(0);
     switch (opt) {
       case Off:
-        _foreColor = TextColor::TEXT;
-        _backColor = TextColor::BACKGROUND;
+        _foreColor = TextColor::WindowText;
+        _backColor = TextColor::Window;
         _styles = TextStyle::Normal;
         break;
       case BoldBright:
@@ -371,7 +370,7 @@ void TerminalDispatch::SetGraphicsRendition(
         _foreColor = _RGBColor(options);
         break;
       case ForegroundDefault:
-        _foreColor = TextColor::TEXT;
+        _foreColor = TextColor::WindowText;
         break;
       case BackgroundBlack:
         _backColor = TextColor::Black;
@@ -401,7 +400,7 @@ void TerminalDispatch::SetGraphicsRendition(
         _backColor = _RGBColor(options);
         break;
       case BackgroundDefault:
-        _backColor = TextColor::BACKGROUND;
+        _backColor = TextColor::Window;
         break;
       case BrightForegroundBlack:
         _foreColor = TextColor::Bright_Black;

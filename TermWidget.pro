@@ -29,4 +29,5 @@ HEADERS += \
     MainWindow.h
 
 SOURCES += \
-    MainWindow.cpp
+    MainWindow.cpp \
+    main.cpp

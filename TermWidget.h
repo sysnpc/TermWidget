@@ -1,27 +1,24 @@
 #pragma once
 
 #include <QtWidgets>
-#include "NexTermProfile.h"
-#include "NexTermRender.h"
-#include "NexTermViewport.h"
+#include "TermProfile.h"
+#include "TermRender.h"
+#include "TermViewport.h"
+#include "config/TermConfig.h"
 #include "terminal/ITerminalControl.h"
 #include "terminal/ITerminalInput.h"
 #include "terminal/Terminal.h"
 
 using namespace PresudoMicrosoft::Terminal::Core;
 
-class NexTermWidget : public QAbstractScrollArea,
-                      public ITerminalInput,
-                      public ITerminalControl {
+class TermWidget : public QAbstractScrollArea,
+                   public ITerminalInput,
+                   public ITerminalControl {
   Q_OBJECT
  public:
-  explicit NexTermWidget(const NexTermProfile &profile,
-                         QWidget *parent = nullptr);
+  explicit TermWidget(TermConfig *conf = nullptr, QWidget *parent = nullptr);
 
   void write(const QByteArray &text);
-
-  inline const NexTermProfile &profile() const { return _profile; }
-  void updateProfile(const NexTermProfile &profile);
 
   QString GetSelectionText() const;
 
@@ -44,17 +41,15 @@ class NexTermWidget : public QAbstractScrollArea,
 
   std::unique_ptr<Terminal> _terminal;
 
-  std::unique_ptr<NexTermViewport> _viewport;
-  std::unique_ptr<NexTermRender> _render;
+  std::unique_ptr<TermViewport> _viewport;
+  std::unique_ptr<TermRender> _render;
   std::unique_ptr<QScrollBar> _vsb;
   std::unique_ptr<QScrollBar> _hsb;
-  QMargins _margin;
 
-  NexTermProfile _profile;
+  TermConfig *_conf = nullptr;
 
   int _flagY;
 
-  QFontMetrics _fm;
   int _fontWidth;
   int _fontHeight;
 

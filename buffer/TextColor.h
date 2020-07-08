@@ -2,12 +2,12 @@
 
 #include <QColor>
 
-class TextColor : public QColor {
+class TextColor {
  public:
   enum ColorTag {
     // default
-    TEXT,
-    BACKGROUND,
+    WindowText,
+    Window,
 
     Black,
     Red,
@@ -26,12 +26,14 @@ class TextColor : public QColor {
     Bright_Magenta,
     Bright_Cyan,
     Bright_White,
+
+    Custom_Rgb,
   };
 
  public:
-  TextColor(const ColorTag tag);
-  TextColor(const QColor &color);
+  TextColor(ColorTag tag);
+  ColorTag tag() const;
 
  private:
-  QColor _tagToColor(const ColorTag &tag);
+  ColorTag _tag;
 };

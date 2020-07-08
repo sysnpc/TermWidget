@@ -6,8 +6,8 @@
 class UAttrCharCell {
  public:
   UAttrCharCell(const UChar& uch,
-                const TextColor& foreColor = TextColor(TextColor::TEXT),
-                const TextColor& backColor = TextColor(TextColor::BACKGROUND),
+                const TextColor& foreColor = TextColor(TextColor::WindowText),
+                const TextColor& backColor = TextColor(TextColor::Window),
                 const TextStyles styles = TextStyle::Normal);
   UAttrCharCell(const CharRowCell& charCell, const AttrRowCell& attrCell);
 

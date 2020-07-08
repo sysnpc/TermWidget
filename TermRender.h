@@ -3,6 +3,8 @@
 #include <QVector>
 #include <QtWidgets>
 #include "buffer/IRenderTarget.h"
+#include "buffer/TextColor.h"
+#include "config/TermConfig.h"
 #include "render/IRenderData.h"
 #include "render/RenderProfile.h"
 
@@ -12,17 +14,16 @@ using namespace NexTerm::Render;
 class CharRowCell;
 class AttrRowCell;
 
-class NexTermRender : public QWidget, public IRenderTarget {
+class TermRender : public QWidget, public IRenderTarget {
   Q_OBJECT
  public:
-  explicit NexTermRender(const RenderProfile &profile, IRenderData *renderData,
-                         QWidget *parent = nullptr);
+  explicit TermRender(TermConfig *conf, IRenderData *renderData,
+                      QWidget *parent = nullptr);
 
   void UpdateFlagY(int flagY);
   void UpdateSelection(Coord start, Coord end);
   void ClearSelection();
-  void UpdateColumn(int column);
-  void UpdateRow(int row);
+  void UpdateSize();
 
  signals:
 
@@ -30,8 +31,10 @@ class NexTermRender : public QWidget, public IRenderTarget {
   void _BlinkUpdate();
 
  private:
-  RenderProfile _profile;
+  TermConfig *_conf;
   IRenderData *_renderData;
+
+  int _flagY = 0;
 
   int _fontWidth;
   int _fontHeight;
@@ -57,6 +60,8 @@ class NexTermRender : public QWidget, public IRenderTarget {
   void _drawCoords(QPainter &p, const QVector<Coord> &coords);
 
   bool _IsInSelection(const Coord &coord);
+
+  QColor _tag2color(const TextColor &textColor);
 
  public:
   // IRenderTarget interface

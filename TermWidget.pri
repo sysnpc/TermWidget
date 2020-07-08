@@ -1,9 +1,8 @@
 HEADERS += \
-    $$PWD/NexTermProfile.h \
-    $$PWD/NexTermRender.h \
-    $$PWD/NexTermViewport.h \
-    $$PWD/NexTermWidget.h \
-    $$PWD/SessionWidget.h \
+    $$PWD/TermProfile.h \
+    $$PWD/TermRender.h \
+    $$PWD/TermViewport.h \
+    $$PWD/TermWidget.h \
     $$PWD/buffer/AttrRow.h \
     $$PWD/buffer/AttrRowCell.h \
     $$PWD/buffer/CharRow.h \
@@ -18,6 +17,7 @@ HEADERS += \
     $$PWD/buffer/UAttrCharCell.h \
     $$PWD/buffer/UChar.h \
     $$PWD/buffer/Viewport.h \
+    $$PWD/config/TermConfig.h \
     $$PWD/parser/ASCII.h \
     $$PWD/parser/DispatchTypes.h \
     $$PWD/parser/IStateMachineEngine.h \
@@ -41,11 +41,10 @@ HEADERS += \
     $$PWD/tracing/TermDispatchTracing.h
 
 SOURCES += \
-    $$PWD/NexTermProfile.cpp \
-    $$PWD/NexTermRender.cpp \
-    $$PWD/NexTermViewport.cpp \
-    $$PWD/NexTermWidget.cpp \
-    $$PWD/SessionWidget.cpp \
+    $$PWD/TermProfile.cpp \
+    $$PWD/TermRender.cpp \
+    $$PWD/TermViewport.cpp \
+    $$PWD/TermWidget.cpp \
     $$PWD/buffer/AttrRow.cpp \
     $$PWD/buffer/AttrRowCell.cpp \
     $$PWD/buffer/CharRow.cpp \
@@ -57,6 +56,7 @@ SOURCES += \
     $$PWD/buffer/UAttrCharCell.cpp \
     $$PWD/buffer/UChar.cpp \
     $$PWD/buffer/Viewport.cpp \
+    $$PWD/config/TermConfig.cpp \
     $$PWD/parser/OutputStateMachineEngine.cpp \
     $$PWD/parser/StateMachine.cpp \
     $$PWD/parser/StateMachineEngineTest.cpp \

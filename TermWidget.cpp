@@ -1,32 +1,32 @@
-#include "NexTermWidget.h"
+#include "TermWidget.h"
 
 #include <QGuiApplication>
-#include "Render/RenderProfile.h"
+#include "render/RenderProfile.h"
 
 using namespace NexTerm::Render;
 
-NexTermWidget::NexTermWidget(const NexTermProfile &profile, QWidget *parent)
+TermWidget::TermWidget(TermConfig *conf, QWidget *parent)
     : QAbstractScrollArea(parent),
-      _profile(profile),
       _flagY{0},
-      _fm(QFontMetrics(_profile.font)),
       _traceScroll{true},
       _lastMouseClickType(QEvent::MouseButtonPress),
       _lastMouseClickTime(QDateTime::currentDateTime()),
       _lastMouseClickPos(QPoint(0, 0)) {
   this->setAttribute(Qt::WA_InputMethodEnabled);
-
   this->setFrameShape(QFrame::NoFrame);
 
-  _viewport = std::make_unique<NexTermViewport>();
+  if (conf == nullptr) {
+    _conf = new TermConfig;
+  } else {
+    _conf = conf;
+  }
+
+  _viewport = std::make_unique<TermViewport>();
   this->setViewport(_viewport.get());
 
-  _margin = QMargins(16, 6, 16, 4);
+  _terminal = std::make_unique<Terminal>(_conf->row(), _conf->column());
 
-  _terminal = std::make_unique<Terminal>(profile.row, profile.column);
-
-  RenderProfile rf{profile.font, profile.row, profile.column, 0, _margin};
-  _render = std::make_unique<NexTermRender>(rf, _terminal.get());
+  _render = std::make_unique<TermRender>(_conf, _terminal.get());
   _render->setParent(_viewport.get());
 
   _terminal->SetRenderTarget(_render.get());
@@ -41,7 +41,7 @@ NexTermWidget::NexTermWidget(const NexTermProfile &profile, QWidget *parent)
   this->setHorizontalScrollBar(_hsb.get());
   _vsb->setRange(0, 0);
   _vsb->setSingleStep(1);
-  _vsb->setPageStep(profile.row);
+  _vsb->setPageStep(_conf->row());
   _vsb->setValue(0);
 
   this->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
@@ -50,70 +50,69 @@ NexTermWidget::NexTermWidget(const NexTermProfile &profile, QWidget *parent)
   _timer = std::make_unique<QTimer>(this);
   _timer->setSingleShot(true);
   QObject::connect(_timer.get(), &QTimer::timeout, this,
-                   &NexTermWidget::_OnTimeOut);
+                   &TermWidget::_OnTimeOut);
 }
 
-void NexTermWidget::write(const QByteArray &text) { _terminal->Write(text); }
+void TermWidget::write(const QByteArray &text) { _terminal->Write(text); }
 
-void NexTermWidget::updateProfile(const NexTermProfile &profile) {
-  _profile = profile;
-}
-
-QString NexTermWidget::GetSelectionText() const {
+QString TermWidget::GetSelectionText() const {
   return _terminal->GetText(_selection->start, _selection->end);
 }
 
-void NexTermWidget::onWrite(const QByteArray &text) { write(text); }
+void TermWidget::onWrite(const QByteArray &text) { write(text); }
 
-void NexTermWidget::_OnTimeOut() {
-  emit this->PtyResize(_profile.row, _profile.column);
+void TermWidget::_OnTimeOut() {
+  emit this->PtyResize(_conf->row(), _conf->column());
 }
 
-void NexTermWidget::_initTerminal() {
-  _fontWidth = _fm.maxWidth();
-  _fontHeight = _fm.height();
+void TermWidget::_initTerminal() {
+  QFontMetrics fm(_conf->font());
+  _fontWidth = fm.maxWidth();
+  _fontHeight = fm.height();
 }
 
-QPoint NexTermWidget::_Coord2Point(const Coord &coord) const {
-  int x = _margin.left() + _fontWidth * (coord.x - 1);
-  int y = _margin.top() + _fontHeight * (coord.y - 1);
+QPoint TermWidget::_Coord2Point(const Coord &coord) const {
+  int x = _conf->margins().left() + _fontWidth * (coord.x - 1);
+  int y = _conf->margins().top() + _fontHeight * (coord.y - 1);
   return QPoint(x, y);
 }
 
-Coord NexTermWidget::_Point2Coord(const QPoint &point) const {
-  int x = qCeil((point.x() - _margin.left()) / (_fontWidth * 1.0));
-  int y = qCeil((point.y() - _margin.top()) / (_fontHeight * 1.0));
-  x = std::clamp(x, 0, _profile.column + 1);
-  y = std::clamp(y, 1, _profile.row);
+Coord TermWidget::_Point2Coord(const QPoint &point) const {
+  int x = qCeil((point.x() - _conf->margins().left()) / (_fontWidth * 1.0));
+  int y = qCeil((point.y() - _conf->margins().top()) / (_fontHeight * 1.0));
+  x = std::clamp(x, 0, _conf->column() + 1);
+  y = std::clamp(y, 1, _conf->row());
   return Coord{x, y};
 }
 
-QSize NexTermWidget::sizeHint() const {
-  int w = _fontWidth * _profile.column + _margin.left() + _margin.right();
-  int h = _fontHeight * _profile.row + _margin.top() + _margin.bottom();
+QSize TermWidget::sizeHint() const {
+  int w = _fontWidth * _conf->column() + _conf->margins().left() +
+          _conf->margins().right();
+  int h = _fontHeight * _conf->row() + _conf->margins().top() +
+          _conf->margins().bottom();
   return QSize(w, h);
 }
 
-void NexTermWidget::resizeEvent(QResizeEvent *event) {
+void TermWidget::resizeEvent(QResizeEvent *event) {
   _timer->start(68);
   QSize size = event->size();
-  int h = size.height() - _margin.top() - _margin.bottom();
-  int w = size.width() - _margin.left() - _margin.right();
+  int h = size.height() - _conf->margins().top() - _conf->margins().bottom();
+  int w = size.width() - _conf->margins().left() - _conf->margins().right();
   if (_vsb->isVisible()) {
     w += _vsb->size().width();
   }
   if (_hsb->isVisible()) {
     h += _hsb->size().height();
   }
-  int row_old = _profile.row, column_old = _profile.column;
+  int row_old = _conf->row(), column_old = _conf->column();
   int row_new = h / _fontHeight, column_new = w / _fontWidth;
-  _profile.row = row_new;
-  _profile.column = column_new;
+  _conf->setRow(row_new);
+  _conf->setColumn(column_new);
   //  qDebug() << row << column;
 
   if (column_old != column_new) {
     _terminal->ResizeColumn(column_new);
-    _render->UpdateColumn(column_new);
+    _render->UpdateSize();
   }
 
   if (row_old != row_new) {
@@ -126,13 +125,13 @@ void NexTermWidget::resizeEvent(QResizeEvent *event) {
         buffer.AdjustFlagY(df);
       }
     }
-    _render->UpdateRow(row_new);
+    _render->UpdateSize();
   }
   emit this->NotifyHightChange(_terminal->GetTextBuffer().LineCount());
   //  emit this->PtyResize(row_new, column_new);
 }
 
-void NexTermWidget::keyPressEvent(QKeyEvent *event) {
+void TermWidget::keyPressEvent(QKeyEvent *event) {
   //  qDebug() << event;
   if (this->HandleKeyEvent(event)) {
     event->accept();
@@ -145,7 +144,7 @@ void NexTermWidget::keyPressEvent(QKeyEvent *event) {
   }
 }
 
-void NexTermWidget::inputMethodEvent(QInputMethodEvent *event) {
+void TermWidget::inputMethodEvent(QInputMethodEvent *event) {
   //  qDebug() << event;
   //  QAbstractScrollArea::inputMethodEvent(event);
   QString str = event->commitString();
@@ -154,7 +153,7 @@ void NexTermWidget::inputMethodEvent(QInputMethodEvent *event) {
   }
 }
 
-QVariant NexTermWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
+QVariant TermWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
   const Cursor &cursor = _terminal->GetTextBuffer().GetCursor();
   Coord coord = cursor.GetPosition();
   switch (query) {
@@ -170,16 +169,16 @@ QVariant NexTermWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
   }
 }
 
-void NexTermWidget::NotifyHightChange(int height) {
-  if (height >= _profile.row && height != _vsb->maximum()) {
-    _vsb->setMaximum(height - _profile.row);
+void TermWidget::NotifyHightChange(int height) {
+  if (height >= _conf->row() && height != _vsb->maximum()) {
+    _vsb->setMaximum(height - _conf->row());
     if (_traceScroll) {
       _vsb->setValue(_vsb->maximum());
     }
   }
 }
 
-void NexTermWidget::scrollContentsBy(int dx, int dy) {
+void TermWidget::scrollContentsBy(int dx, int dy) {
   _flagY -= dy;
   _render->UpdateFlagY(_flagY);
   if (_vsb->value() == _vsb->maximum()) {
@@ -189,15 +188,15 @@ void NexTermWidget::scrollContentsBy(int dx, int dy) {
   }
 }
 
-void NexTermWidget::WarningBell() { qApp->beep(); }
+void TermWidget::WarningBell() { qApp->beep(); }
 
-void NexTermWidget::SendDeviceAttributes(const QString &str) {
+void TermWidget::SendDeviceAttributes(const QString &str) {
   emit this->SendString(str);
 }
 
-void NexTermWidget::RenderInit() { _render->UpdateFlagY(0); }
+void TermWidget::RenderInit() { _render->UpdateFlagY(0); }
 
-void NexTermWidget::mousePressEvent(QMouseEvent *event) {
+void TermWidget::mousePressEvent(QMouseEvent *event) {
   if (_lastMouseClickType == QEvent::MouseButtonDblClick &&
       _lastMouseClickPos == event->pos() &&
       qAbs(QDateTime::currentDateTime().msecsTo(_lastMouseClickTime)) < 300) {
@@ -218,20 +217,20 @@ void NexTermWidget::mousePressEvent(QMouseEvent *event) {
   _lastMouseClickPos = event->pos();
 }
 
-void NexTermWidget::mouseDoubleClickEvent(QMouseEvent *event) {
+void TermWidget::mouseDoubleClickEvent(QMouseEvent *event) {
   _lastMouseClickType = event->type();
   _lastMouseClickTime = QDateTime::currentDateTime();
   _lastMouseClickPos = event->pos();
 }
 
-void NexTermWidget::mouseTripleClickEvent(QMouseEvent *event) {
+void TermWidget::mouseTripleClickEvent(QMouseEvent *event) {
   qDebug() << "triple click";
 }
 
-void NexTermWidget::mouseMoveEvent(QMouseEvent *event) {
+void TermWidget::mouseMoveEvent(QMouseEvent *event) {
   if (event->buttons().testFlag(Qt::LeftButton)) {
     QPoint pos = event->pos();
-    if (pos.x() > _margin.left() && pos.y() > _margin.top()) {
+    if (pos.x() > _conf->margins().left() && pos.y() > _conf->margins().top()) {
       Coord coord = _Point2Coord(pos);
       Coord end{coord.x, coord.y + _flagY};
       Coord start = _selection->pivot;
@@ -249,7 +248,7 @@ void NexTermWidget::mouseMoveEvent(QMouseEvent *event) {
   }
 }
 
-bool NexTermWidget::event(QEvent *event) {
+bool TermWidget::event(QEvent *event) {
   //  qDebug() << event;
   // FIX: tab change focus
   if (event->type() == QEvent::KeyPress) {
@@ -262,7 +261,8 @@ bool NexTermWidget::event(QEvent *event) {
   return QAbstractScrollArea::event(event);
 }
 
-int NexTermWidget::CalcWidth(const QString &str) {
+int TermWidget::CalcWidth(const QString &str) {
   // TODO: use Map
-  return qCeil(_fm.horizontalAdvance(str) / (_fontWidth * 1.0));
+  QFontMetrics fm(_conf->font());
+  return qCeil(fm.horizontalAdvance(str) / (_fontWidth * 1.0));
 }

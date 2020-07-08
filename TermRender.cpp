@@ -1,18 +1,17 @@
-#include "NexTermRender.h"
+#include "TermRender.h"
 
-#include "Config/Preferences.h"
 #include "buffer/TextBuffer.h"
 
-NexTermRender::NexTermRender(const RenderProfile &profile,
-                             IRenderData *renderData, QWidget *parent)
+TermRender::TermRender(TermConfig *conf, IRenderData *renderData,
+                       QWidget *parent)
     : QWidget(parent),
-      _profile(profile),
+      _conf(conf),
       _renderData(renderData),
       _start{0, 0},
       _end{0, 0} {
   this->setAutoFillBackground(true);
 
-  QFontMetrics fm(_profile.font);
+  QFontMetrics fm(_conf->font());
   _fontWidth = fm.maxWidth();
   _fontHeight = fm.height();
 
@@ -20,15 +19,15 @@ NexTermRender::NexTermRender(const RenderProfile &profile,
 
   _timer = std::make_unique<QTimer>(this);
   QObject::connect(_timer.get(), &QTimer::timeout, this,
-                   &NexTermRender::_BlinkUpdate);
+                   &TermRender::_BlinkUpdate);
 }
 
-void NexTermRender::UpdateFlagY(int flagY) {
-  _profile.flagY = flagY;
+void TermRender::UpdateFlagY(int flagY) {
+  _flagY = flagY;
   emit this->update();
 }
 
-void NexTermRender::UpdateSelection(Coord start, Coord end) {
+void TermRender::UpdateSelection(Coord start, Coord end) {
   _start = start;
   _end = end;
   //  qDebug() << QString("(%1, %2) -> (%3, %4)")
@@ -39,37 +38,29 @@ void NexTermRender::UpdateSelection(Coord start, Coord end) {
   emit this->update();
 }
 
-void NexTermRender::ClearSelection() {
+void TermRender::ClearSelection() {
   _start = Coord{0, 0};
   _end = Coord{0, 0};
   emit this->update();
 }
 
-void NexTermRender::UpdateColumn(int column) {
-  _profile.column = column;
-  this->resize(sizeHint());
-}
+void TermRender::UpdateSize() { this->resize(sizeHint()); }
 
-void NexTermRender::UpdateRow(int row) {
-  _profile.row = row;
-  this->resize(sizeHint());
-}
-
-void NexTermRender::_BlinkUpdate() {
+void TermRender::_BlinkUpdate() {
   _isBlinkShow = !_isBlinkShow;
   //  qDebug() << _isBlinkShow;
   this->update();
 }
 
-QVector<Coord> NexTermRender::_calcCoords(int x1, int y1, int x2, int y2) {
+QVector<Coord> TermRender::_calcCoords(int x1, int y1, int x2, int y2) {
   QVector<Coord> coords;
   while ((y1 < y2) || (y1 == y2 && x1 < x2)) {
-    if (x1 <= _profile.column && y1 <= _profile.row) {
+    if (x1 <= _conf->column() && y1 <= _conf->row()) {
       coords.append({x1, y1});
     }
 
     x1 += 1;
-    if (x1 > _profile.column) {
+    if (x1 > _conf->column()) {
       x1 = 1;
       y1 += 1;
     }
@@ -77,9 +68,9 @@ QVector<Coord> NexTermRender::_calcCoords(int x1, int y1, int x2, int y2) {
   return coords;
 }
 
-QVector<Coord> NexTermRender::_rect2coords(const QRect &rect) {
-  int left = _profile.margin.left();
-  int top = _profile.margin.top();
+QVector<Coord> TermRender::_rect2coords(const QRect &rect) {
+  int left = _conf->margins().left();
+  int top = _conf->margins().top();
   int x = rect.x(), y = rect.y(), w = rect.width(), h = rect.height();
 
   int x1 = qMax(0, x - left);
@@ -94,13 +85,13 @@ QVector<Coord> NexTermRender::_rect2coords(const QRect &rect) {
   return _calcCoords(x1, y1, x2, y2);
 }
 
-QRect NexTermRender::_coord2rect(const Coord &coord) {
-  int left = _profile.margin.left() + (coord.x - 1) * _fontWidth;
-  int top = _profile.margin.top() + (coord.y - 1) * _fontHeight;
+QRect TermRender::_coord2rect(const Coord &coord) {
+  int left = _conf->margins().left() + (coord.x - 1) * _fontWidth;
+  int top = _conf->margins().top() + (coord.y - 1) * _fontHeight;
   return QRect(left, top, _fontWidth, _fontHeight);
 }
 
-QRegion NexTermRender::_coords2region(const QVector<Coord> &coords) {
+QRegion TermRender::_coords2region(const QVector<Coord> &coords) {
   QRegion region;
   for (const Coord &coord : coords) {
     region += _coord2rect(coord);
@@ -108,7 +99,7 @@ QRegion NexTermRender::_coords2region(const QVector<Coord> &coords) {
   return region;
 }
 
-void NexTermRender::_setPen(QPainter &p, const AttrRowCell &attrcell) {
+void TermRender::_setPen(QPainter &p, const AttrRowCell &attrcell) {
   QPen pen = p.pen();
   QFont font = p.font();
   const TextStyles &styles = attrcell.styles();
@@ -117,7 +108,7 @@ void NexTermRender::_setPen(QPainter &p, const AttrRowCell &attrcell) {
       _timer->start(600);
     }
   }
-  pen.setColor(attrcell.foreColor());
+  pen.setColor(_tag2color(attrcell.foreColor()));
   if (styles.testFlag(TextStyle::Bold)) {
     font.setBold(true);
   } else {
@@ -127,23 +118,23 @@ void NexTermRender::_setPen(QPainter &p, const AttrRowCell &attrcell) {
   p.setFont(font);
 }
 
-void NexTermRender::_drawCursor(QPainter &p, const Coord &coord, int width) {
+void TermRender::_drawCursor(QPainter &p, const Coord &coord, int width) {
   p.save();
   p.setPen(QColor("#e0def4"));
   p.setBrush(QColor("#e0def4"));
-  int x = (coord.x - 1) * _fontWidth + _profile.margin.left();
-  int y = (coord.y - 1) * _fontHeight + _profile.margin.top();
+  int x = (coord.x - 1) * _fontWidth + _conf->margins().left();
+  int y = (coord.y - 1) * _fontHeight + _conf->margins().top();
   p.drawRect(x, y, _fontWidth * width, _fontHeight);
   p.restore();
 }
 
-void NexTermRender::_drawContent(QPainter &p, const Coord &coord,
-                                 const CharRowCell &charCell,
-                                 const AttrRowCell &attrCell) {
+void TermRender::_drawContent(QPainter &p, const Coord &coord,
+                              const CharRowCell &charCell,
+                              const AttrRowCell &attrCell) {
   p.save();
   if (charCell.isNormal()) {
-    int x = (coord.x - 1) * _fontWidth + _profile.margin.left();
-    int y = (coord.y - 1) * _fontHeight + _profile.margin.top();
+    int x = (coord.x - 1) * _fontWidth + _conf->margins().left();
+    int y = (coord.y - 1) * _fontHeight + _conf->margins().top();
     int w = charCell.uch().width() * _fontWidth;
     int h = _fontHeight;
     _setPen(p, attrCell);
@@ -167,23 +158,23 @@ void NexTermRender::_drawContent(QPainter &p, const Coord &coord,
   p.restore();
 }
 
-void NexTermRender::_drawSelection(QPainter &p, const Coord &coord) {
+void TermRender::_drawSelection(QPainter &p, const Coord &coord) {
   p.save();
-  int x = (coord.x - 1) * _fontWidth + _profile.margin.left();
-  int y = (coord.y - 1) * _fontHeight + _profile.margin.top();
+  int x = (coord.x - 1) * _fontWidth + _conf->margins().left();
+  int y = (coord.y - 1) * _fontHeight + _conf->margins().top();
   int w = _fontWidth;
   int h = _fontHeight;
-  p.setPen(appconf->profile()->selectionColor());
-  p.setBrush(appconf->profile()->selectionColor());
+  p.setPen(_conf->selection());
+  p.setBrush(_conf->selection());
   p.drawRect(x, y, w, h);
   p.restore();
 }
 
-void NexTermRender::_drawCoords(QPainter &p, const QVector<Coord> &coords) {
+void TermRender::_drawCoords(QPainter &p, const QVector<Coord> &coords) {
   const TextBuffer &buffer = _renderData->GetTextBuffer();
   bool blinkFlag = false;
   for (Coord coord : coords) {
-    Coord rpos{coord.x, coord.y + _profile.flagY};
+    Coord rpos{coord.x, coord.y + _flagY};
     if (buffer.IsWithInPos(rpos)) {
       const Row &row = buffer.GetRow(rpos.y);
       const CharRowCell &charCell = row.GetCharRow().at(rpos.x);
@@ -211,7 +202,7 @@ void NexTermRender::_drawCoords(QPainter &p, const QVector<Coord> &coords) {
   }
 }
 
-bool NexTermRender::_IsInSelection(const Coord &coord) {
+bool TermRender::_IsInSelection(const Coord &coord) {
   if (((coord.y > _start.y) || (coord.y == _start.y && coord.x >= _start.x)) &&
       ((_end.y > coord.y) || (_end.y == coord.y && _end.x >= coord.x))) {
     return true;
@@ -220,39 +211,84 @@ bool NexTermRender::_IsInSelection(const Coord &coord) {
   }
 }
 
-void NexTermRender::TriggerRedraw(const Rect &rect) {
+QColor TermRender::_tag2color(const TextColor &textColor) {
+  switch (textColor.tag()) {
+    case TextColor::WindowText:
+      return _conf->windowText();
+    case TextColor::Window:
+      return _conf->window();
+    case TextColor::Black:
+      return _conf->black();
+    case TextColor::Red:
+      return _conf->red();
+    case TextColor::Green:
+      return _conf->green();
+    case TextColor::Yellow:
+      return _conf->yellow();
+    case TextColor::Blue:
+      return _conf->blue();
+    case TextColor::Magenta:
+      return _conf->magenta();
+    case TextColor::Cyan:
+      return _conf->cyan();
+    case TextColor::White:
+      return _conf->white();
+    case TextColor::Bright_Black:
+      return _conf->brightBlack();
+    case TextColor::Bright_Red:
+      return _conf->brightRed();
+    case TextColor::Bright_Green:
+      return _conf->brightGreen();
+    case TextColor::Bright_Yellow:
+      return _conf->brightYellow();
+    case TextColor::Bright_Blue:
+      return _conf->brightBlue();
+    case TextColor::Bright_Magenta:
+      return _conf->brightMagenta();
+    case TextColor::Bright_Cyan:
+      return _conf->brightCyan();
+    case TextColor::Bright_White:
+      return _conf->brightWhite();
+    case TextColor::Custom_Rgb:
+      return _conf->windowText();
+    default:
+      break;
+  }
+}
+
+void TermRender::TriggerRedraw(const Rect &rect) {
   this->TriggerRedraw(rect.x1, rect.y1, rect.x2, rect.y2);
 }
 
-void NexTermRender::TriggerRedraw(int x1, int y1, int x2, int y2) {
+void TermRender::TriggerRedraw(int x1, int y1, int x2, int y2) {
   //  QVector<Coord> coords = _calcCoords(x1, y1, x2, y2);
   //  this->update(_coords2region(coords));
   this->update();
 }
 
-void NexTermRender::TriggerRedrawCursor(const Coord *const pcoord) {
+void TermRender::TriggerRedrawCursor(const Coord *const pcoord) {
   this->update();
 }
 
-void NexTermRender::TriggerRedrawAll() { emit this->update(); }
+void TermRender::TriggerRedrawAll() { emit this->update(); }
 
-void NexTermRender::TriggerTeardown() {}
+void TermRender::TriggerTeardown() {}
 
-void NexTermRender::TriggerSelection() {}
+void TermRender::TriggerSelection() {}
 
-void NexTermRender::TriggerScroll() {}
+void TermRender::TriggerScroll() {}
 
-void NexTermRender::TriggerScroll(const Coord *const pcoordDelta) {}
+void TermRender::TriggerScroll(const Coord *const pcoordDelta) {}
 
-void NexTermRender::TriggerCircling() {}
+void TermRender::TriggerCircling() {}
 
-void NexTermRender::TriggerTitleChange() {}
+void TermRender::TriggerTitleChange() {}
 
-void NexTermRender::paintEvent(QPaintEvent *event) {
+void TermRender::paintEvent(QPaintEvent *event) {
   Q_UNUSED(event);
 
   QPainter p(this);
-  p.setFont(_profile.font);
+  p.setFont(_conf->font());
   p.setRenderHint(QPainter::Antialiasing);
 
   const QRegion &region = event->region();
@@ -262,10 +298,10 @@ void NexTermRender::paintEvent(QPaintEvent *event) {
   }
 }
 
-QSize NexTermRender::sizeHint() const {
-  int w = _fontWidth * _profile.column + _profile.margin.left() +
-          _profile.margin.right();
-  int h = _fontHeight * _profile.row + _profile.margin.top() +
-          _profile.margin.bottom();
+QSize TermRender::sizeHint() const {
+  int w = _fontWidth * _conf->column() + _conf->margins().left() +
+          _conf->margins().right();
+  int h = _fontHeight * _conf->row() + _conf->margins().top() +
+          _conf->margins().bottom();
   return QSize(w, h);
 }

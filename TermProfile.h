@@ -2,7 +2,7 @@
 
 #include <QFont>
 
-struct NexTermProfile {
+struct TermProfile {
   QFont font;
   int row;
   int column;
