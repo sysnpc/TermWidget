@@ -6,7 +6,6 @@
 #include "buffer/TextColor.h"
 #include "config/TermConfig.h"
 #include "render/IRenderData.h"
-#include "render/RenderProfile.h"
 
 using namespace PresudoMicrosoft::Console::Render;
 using namespace NexTerm::Render;

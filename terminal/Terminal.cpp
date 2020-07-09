@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QTextBoundaryFinder>
 #include "../parser/OutputStateMachineEngine.h"
+#include "../parser/Til.h"
 #include "TerminalDispatch.h"
 
 using namespace PresudoMicrosoft::Terminal::Core;
@@ -48,6 +49,31 @@ QString Terminal::GetText(const Coord& start, const Coord& end) {
   } else {
     return _buffer->GetText(start, end);
   }
+}
+
+void Terminal::_InitTabStopsForWidth(const size_t width) {
+  const auto initialWidth = _tabStopColumns.size();
+  if (width > initialWidth) {
+    _tabStopColumns.resize(width);
+    if (_initDefaultTabStops) {
+      for (auto column = 8u; column < _tabStopColumns.size(); column += 8) {
+        if (column >= initialWidth) {
+          til::at(_tabStopColumns, column) = true;
+        }
+      }
+    }
+  }
+}
+
+void Terminal::_ClearSingleTabStop() {
+  _InitTabStopsForWidth(_size.column);
+  int x = _buffer->GetCursor().GetPosition().x;
+  _tabStopColumns.at(x - 1) = false;
+}
+
+void Terminal::_ClearAllTabStops() {
+  _tabStopColumns.clear();
+  _initDefaultTabStops = false;
 }
 
 void Terminal::WriteCell(const std::vector<UAttrCharCell>& ucells) {
@@ -221,4 +247,49 @@ void Terminal::ScreenAlignmentPattern() {
 
 void Terminal::BracketedPasteMode(bool enabled) {
   _control->BracketedPasteMode(enabled);
+}
+
+void Terminal::HorizontalTabSet() {
+  _InitTabStopsForWidth(_size.column);
+  int x = _buffer->GetCursor().GetPosition().x;
+  _tabStopColumns.at(x - 1) = true;
+}
+
+void Terminal::TabClear(const size_t clearType) {
+  switch (clearType) {
+    case TabClearType::ClearCurrentColumn:
+      _ClearSingleTabStop();
+      break;
+    case TabClearType::ClearAllColumns:
+      _ClearAllTabStops();
+      break;
+  }
+}
+
+void Terminal::ForwardTab(const size_t numTabs) {
+  int x = _buffer->GetCursor().GetPosition().x;
+  int y = _buffer->GetCursor().GetPosition().y;
+  auto tabsPerformed = 0u;
+  _InitTabStopsForWidth(_size.column);
+  while (x <= _size.column && tabsPerformed < numTabs) {
+    x++;
+    if (til::at(_tabStopColumns, x - 1)) {
+      tabsPerformed++;
+    }
+  }
+  _buffer->SetCursor(x, y);
+}
+
+void Terminal::BackwardsTab(const size_t numTabs) {
+  int x = _buffer->GetCursor().GetPosition().x;
+  int y = _buffer->GetCursor().GetPosition().y;
+  auto tabsPerformed = 0u;
+  _InitTabStopsForWidth(_size.column);
+  while (x > 1 && tabsPerformed < numTabs) {
+    x--;
+    if (til::at(_tabStopColumns, x - 1)) {
+      tabsPerformed++;
+    }
+  }
+  _buffer->SetCursor(x, y);
 }

@@ -51,4 +51,9 @@ class ITerminal {
   virtual void ScreenAlignmentPattern() = 0;
 
   virtual void BracketedPasteMode(bool enabled) = 0;
+
+  virtual void HorizontalTabSet() = 0;
+  virtual void TabClear(const size_t clearType) = 0;
+  virtual void ForwardTab(const size_t numTabs) = 0;
+  virtual void BackwardsTab(const size_t numTabs) = 0;
 };

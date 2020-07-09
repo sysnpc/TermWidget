@@ -1,7 +1,6 @@
 #include "TermWidget.h"
 
 #include <QGuiApplication>
-#include "render/RenderProfile.h"
 
 using namespace NexTerm::Render;
 

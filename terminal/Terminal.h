@@ -35,6 +35,11 @@ namespace PresudoMicrosoft::Terminal::Core {
     [[nodiscard]] std::unique_lock<std::shared_mutex> LockForWriting();
 
    private:
+    void _InitTabStopsForWidth(const size_t width);
+    void _ClearSingleTabStop();
+    void _ClearAllTabStops();
+
+   private:
     std::unique_ptr<StateMachine> _stateMachine;
 
     std::shared_mutex _readWriteLock;
@@ -46,6 +51,9 @@ namespace PresudoMicrosoft::Terminal::Core {
     IRenderTarget* _renderTarget = nullptr;
     ITerminalControl* _control = nullptr;
     ITerminalInput* _input = nullptr;
+
+    std::vector<bool> _tabStopColumns;
+    bool _initDefaultTabStops = true;
 
     // ITerminal interface
    public:
@@ -89,6 +97,11 @@ namespace PresudoMicrosoft::Terminal::Core {
     void ScreenAlignmentPattern() override;
 
     void BracketedPasteMode(bool enabled) override;
+
+    void HorizontalTabSet() override;
+    void TabClear(const size_t clearType) override;
+    void ForwardTab(const size_t numTabs) override;
+    void BackwardsTab(const size_t numTabs) override;
 
     // IRenderData interface
    public:

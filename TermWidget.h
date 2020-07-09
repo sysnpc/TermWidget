@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QtWidgets>
-#include "TermProfile.h"
 #include "TermRender.h"
 #include "TermViewport.h"
 #include "config/TermConfig.h"

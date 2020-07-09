@@ -1,5 +1,4 @@
 HEADERS += \
-    $$PWD/TermProfile.h \
     $$PWD/TermRender.h \
     $$PWD/TermViewport.h \
     $$PWD/TermWidget.h \
@@ -28,7 +27,6 @@ HEADERS += \
     $$PWD/parser/StateMachineEngineTest.h \
     $$PWD/parser/Til.h \
     $$PWD/render/IRenderData.h \
-    $$PWD/render/RenderProfile.h \
     $$PWD/terminal/ITerminal.h \
     $$PWD/terminal/ITerminalControl.h \
     $$PWD/terminal/ITerminalInput.h \
@@ -41,7 +39,6 @@ HEADERS += \
     $$PWD/tracing/TermDispatchTracing.h
 
 SOURCES += \
-    $$PWD/TermProfile.cpp \
     $$PWD/TermRender.cpp \
     $$PWD/TermViewport.cpp \
     $$PWD/TermWidget.cpp \

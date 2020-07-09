@@ -179,18 +179,24 @@ void TerminalDispatch::UseMainScreenBuffer() {
   _terminal->UseMainBuffer();
 }
 
-void TerminalDispatch::HorizontalTabSet() { TermDispatch::HorizontalTabSet(); }
+void TerminalDispatch::HorizontalTabSet() {
+  //  TermDispatch::HorizontalTabSet();
+  _terminal->HorizontalTabSet();
+}
 
 void TerminalDispatch::ForwardTab(const size_t numTabs) {
-  TermDispatch::ForwardTab(numTabs);
+  //  TermDispatch::ForwardTab(numTabs);
+  _terminal->ForwardTab(numTabs);
 }
 
 void TerminalDispatch::BackwardsTab(const size_t numTabs) {
-  TermDispatch::BackwardsTab(numTabs);
+  //  TermDispatch::BackwardsTab(numTabs);
+  _terminal->BackwardsTab(numTabs);
 }
 
 void TerminalDispatch::TabClear(const size_t clearType) {
-  TermDispatch::TabClear(clearType);
+  //  TermDispatch::TabClear(clearType);
+  _terminal->TabClear(clearType);
 }
 
 void TerminalDispatch::EnableDECCOLMSupport(const bool enabled) {
