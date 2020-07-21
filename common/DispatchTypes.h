@@ -1,5 +1,7 @@
 #pragma once
 
+#include <utility>
+
 namespace PresudoMicrosoft::Console::VirtualTerminal::DispatchTypes {
   enum class EraseType : unsigned int {
     ToEnd = 0,
@@ -23,7 +25,7 @@ namespace PresudoMicrosoft::Console::VirtualTerminal::DispatchTypes {
     Invisible = 8,
     CrossedOut = 9,
     DoublyUnderlined = 21,
-    UnBold = 22,
+    NotBoldOrFaint = 22,
     NotItalics = 23,
     NoUnderline = 24,
     Steady = 25,    // _not_ blink
@@ -50,6 +52,8 @@ namespace PresudoMicrosoft::Console::VirtualTerminal::DispatchTypes {
     BackgroundWhite = 47,
     BackgroundExtended = 48,
     BackgroundDefault = 49,
+    Overline = 53,
+    NoOverline = 55,
     BrightForegroundBlack = 90,
     BrightForegroundRed = 91,
     BrightForegroundGreen = 92,
@@ -75,6 +79,7 @@ namespace PresudoMicrosoft::Console::VirtualTerminal::DispatchTypes {
 
   enum PrivateModeParams : unsigned short {
     DECCKM_CursorKeysMode = 1,
+    DECANM_AnsiMode = 2,
     DECCOLM_SetNumberOfColumns = 3,
     DECSCNM_ScreenMode = 5,
     DECOM_OriginMode = 6,
@@ -89,10 +94,15 @@ namespace PresudoMicrosoft::Console::VirtualTerminal::DispatchTypes {
     SGR_EXTENDED_MODE = 1006,
     ALTERNATE_SCROLL = 1007,
     ASB_AlternateScreenBuffer = 1049,
-    BRACKETED_PASTE_MODE = 2004,
+    W32IM_Win32InputMode = 9001
   };
 
-  enum VTCharacterSets : wchar_t { DEC_LineDrawing = L'0', USASCII = L'B' };
+  namespace CharacterSets {
+    constexpr auto DecSpecialGraphics = std::make_pair(L'0', L'\0');
+    constexpr auto ASCII = std::make_pair(L'B', L'\0');
+  }  // namespace CharacterSets
+
+  enum CodingSystem : wchar_t { ISO2022 = L'@', UTF8 = L'G' };
 
   enum TabClearType : unsigned short {
     ClearCurrentColumn = 0,

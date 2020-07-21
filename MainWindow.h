@@ -1,13 +1,13 @@
 #pragma once
 
 #include <QMainWindow>
+#include "TermWidget.h"
 
 namespace Ui {
   class MainWindow;
 }
 
-class MainWindow : public QMainWindow
-{
+class MainWindow : public QMainWindow {
   Q_OBJECT
 
  public:
@@ -16,5 +16,6 @@ class MainWindow : public QMainWindow
 
  private:
   Ui::MainWindow *ui;
+  std::unique_ptr<QBoxLayout> _layout;
+  std::unique_ptr<TermWidget> _term;
 };
-

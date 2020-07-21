@@ -2,36 +2,34 @@
 
 #include <QVector>
 #include <QtWidgets>
-#include "buffer/IRenderTarget.h"
-#include "buffer/TextColor.h"
+#include "common/precomp.h"
 #include "config/TermConfig.h"
-#include "render/IRenderData.h"
+#include "terminal/Terminal.h"
 
-using namespace PresudoMicrosoft::Console::Render;
-using namespace NexTerm::Render;
+using namespace PresudoMicrosoft::Console::VirtualTerminal;
 
-class CharRowCell;
-class AttrRowCell;
-
-class TermRender : public QWidget, public IRenderTarget {
+class TermRender : public QWidget {
   Q_OBJECT
  public:
-  explicit TermRender(TermConfig *conf, IRenderData *renderData,
-                      QWidget *parent = nullptr);
+  explicit TermRender(TermConfig *conf, QWidget *parent = nullptr);
+
+  void SetTerminal(Terminal *term);
 
   void UpdateFlagY(int flagY);
-  void UpdateSelection(Coord start, Coord end);
-  void ClearSelection();
+  //  void UpdateSelection(Coord start, Coord end);
+  //  void ClearSelection();
   void UpdateSize();
 
  signals:
 
  private slots:
-  void _BlinkUpdate();
+  void _BlinkTimeOut();
 
  private:
   TermConfig *_conf;
-  IRenderData *_renderData;
+
+  Terminal *_term = nullptr;
+  //  IRenderData *_renderData;
 
   int _flagY = 0;
 
@@ -42,38 +40,37 @@ class TermRender : public QWidget, public IRenderTarget {
   Coord _start;
   Coord _end;
 
-  std::unique_ptr<QTimer> _timer;
-  bool _isBlinkShow = false;
+  std::unique_ptr<QTimer> _blinkTimer;
+  bool _blinkShow = true;
 
   QVector<Coord> _calcCoords(int x1, int y1, int x2, int y2);
-
   QVector<Coord> _rect2coords(const QRect &rect);
-  QRect _coord2rect(const Coord &coord);
-  QRegion _coords2region(const QVector<Coord> &coords);
 
-  void _setPen(QPainter &p, const AttrRowCell &attrcell);
-  void _drawCursor(QPainter &p, const Coord &coord, int width);
-  void _drawContent(QPainter &p, const Coord &coord,
-                    const CharRowCell &charCell, const AttrRowCell &attrCell);
-  void _drawSelection(QPainter &p, const Coord &coord);
+  //  QRect _coord2rect(const Coord &coord);
+  //  QRegion _coords2region(const QVector<Coord> &coords);
+
+  //  void _setPen(QPainter &p, const AttrRowCell &attrcell);
+  //  void _drawCursor(QPainter &p, const Coord &coord, int width);
+  void _drawContent(QPainter &p, const Coord &coord, const TextCell &cell);
+  //  void _drawSelection(QPainter &p, const Coord &coord);
   void _drawCoords(QPainter &p, const QVector<Coord> &coords);
 
-  bool _IsInSelection(const Coord &coord);
+  //  bool _IsInSelection(const Coord &coord);
 
   QColor _tag2color(const TextColor &textColor);
 
  public:
   // IRenderTarget interface
-  void TriggerRedraw(const Rect &rect) override;
-  void TriggerRedraw(int x1, int y1, int x2, int y2) override;
-  void TriggerRedrawCursor(const Coord *const pcoord) override;
-  void TriggerRedrawAll() override;
-  void TriggerTeardown() override;
-  void TriggerSelection() override;
-  void TriggerScroll() override;
-  void TriggerScroll(const Coord *const pcoordDelta) override;
-  void TriggerCircling() override;
-  void TriggerTitleChange() override;
+  //  void TriggerRedraw(const Rect &rect) override;
+  //  void TriggerRedraw(int x1, int y1, int x2, int y2) override;
+  //  void TriggerRedrawCursor(const Coord *const pcoord) override;
+  //  void TriggerRedrawAll() override;
+  //  void TriggerTeardown() override;
+  //  void TriggerSelection() override;
+  //  void TriggerScroll() override;
+  //  void TriggerScroll(const Coord *const pcoordDelta) override;
+  //  void TriggerCircling() override;
+  //  void TriggerTitleChange() override;
 
   // QWidget interface
  public:

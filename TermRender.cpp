@@ -1,14 +1,7 @@
 #include "TermRender.h"
 
-#include "buffer/TextBuffer.h"
-
-TermRender::TermRender(TermConfig *conf, IRenderData *renderData,
-                       QWidget *parent)
-    : QWidget(parent),
-      _conf(conf),
-      _renderData(renderData),
-      _start{0, 0},
-      _end{0, 0} {
+TermRender::TermRender(TermConfig *conf, QWidget *parent)
+    : QWidget(parent), _conf(conf), _start{0, 0}, _end{0, 0} {
   this->setAutoFillBackground(true);
 
   QFontMetrics fm(_conf->font());
@@ -17,38 +10,39 @@ TermRender::TermRender(TermConfig *conf, IRenderData *renderData,
 
   this->setCursor(Qt::IBeamCursor);
 
-  _timer = std::make_unique<QTimer>(this);
-  QObject::connect(_timer.get(), &QTimer::timeout, this,
-                   &TermRender::_BlinkUpdate);
+  _blinkTimer = std::make_unique<QTimer>(this);
+  QObject::connect(_blinkTimer.get(), &QTimer::timeout, this,
+                   &TermRender::_BlinkTimeOut);
 }
+
+void TermRender::SetTerminal(Terminal *term) { _term = term; }
 
 void TermRender::UpdateFlagY(int flagY) {
   _flagY = flagY;
   emit this->update();
 }
 
-void TermRender::UpdateSelection(Coord start, Coord end) {
-  _start = start;
-  _end = end;
-  //  qDebug() << QString("(%1, %2) -> (%3, %4)")
-  //                  .arg(start.x)
-  //                  .arg(start.y)
-  //                  .arg(end.x)
-  //                  .arg(end.y);
-  emit this->update();
-}
+// void TermRender::UpdateSelection(Coord start, Coord end) {
+//  _start = start;
+//  _end = end;
+//  //  qDebug() << QString("(%1, %2) -> (%3, %4)")
+//  //                  .arg(start.x)
+//  //                  .arg(start.y)
+//  //                  .arg(end.x)
+//  //                  .arg(end.y);
+//  emit this->update();
+//}
 
-void TermRender::ClearSelection() {
-  _start = Coord{0, 0};
-  _end = Coord{0, 0};
-  emit this->update();
-}
+// void TermRender::ClearSelection() {
+//  _start = Coord{0, 0};
+//  _end = Coord{0, 0};
+//  emit this->update();
+//}
 
 void TermRender::UpdateSize() { this->resize(sizeHint()); }
 
-void TermRender::_BlinkUpdate() {
-  _isBlinkShow = !_isBlinkShow;
-  //  qDebug() << _isBlinkShow;
+void TermRender::_BlinkTimeOut() {
+  _blinkShow = !_blinkShow;
   this->update();
 }
 
@@ -85,131 +79,134 @@ QVector<Coord> TermRender::_rect2coords(const QRect &rect) {
   return _calcCoords(x1, y1, x2, y2);
 }
 
-QRect TermRender::_coord2rect(const Coord &coord) {
-  int left = _conf->margins().left() + (coord.x - 1) * _fontWidth;
-  int top = _conf->margins().top() + (coord.y - 1) * _fontHeight;
-  return QRect(left, top, _fontWidth, _fontHeight);
-}
+// QRect TermRender::_coord2rect(const Coord &coord) {
+//  int left = _conf->margins().left() + (coord.x - 1) * _fontWidth;
+//  int top = _conf->margins().top() + (coord.y - 1) * _fontHeight;
+//  return QRect(left, top, _fontWidth, _fontHeight);
+//}
 
-QRegion TermRender::_coords2region(const QVector<Coord> &coords) {
-  QRegion region;
-  for (const Coord &coord : coords) {
-    region += _coord2rect(coord);
-  }
-  return region;
-}
+// QRegion TermRender::_coords2region(const QVector<Coord> &coords) {
+//  QRegion region;
+//  for (const Coord &coord : coords) {
+//    region += _coord2rect(coord);
+//  }
+//  return region;
+//}
 
-void TermRender::_setPen(QPainter &p, const AttrRowCell &attrcell) {
-  QPen pen = p.pen();
-  QFont font = p.font();
-  const TextStyles &styles = attrcell.styles();
-  if (styles.testFlag(TextStyle::Blink)) {
-    if (!_timer->isActive()) {
-      _timer->start(600);
-    }
-  }
-  pen.setColor(_tag2color(attrcell.foreColor()));
-  if (styles.testFlag(TextStyle::Bold)) {
-    font.setBold(true);
-  } else {
-    font.setBold(false);
-  }
-  p.setPen(pen);
-  p.setFont(font);
-}
+// void TermRender::_setPen(QPainter &p, const AttrRowCell &attrcell) {
+//  QPen pen = p.pen();
+//  QFont font = p.font();
+//  const TextStyles &styles = attrcell.styles();
+//  if (styles.testFlag(TextStyle::Blink)) {
+//    if (!_timer->isActive()) {
+//      _timer->start(600);
+//    }
+//  }
+//  pen.setColor(_tag2color(attrcell.foreColor()));
+//  if (styles.testFlag(TextStyle::Bold)) {
+//    font.setBold(true);
+//  } else {
+//    font.setBold(false);
+//  }
+//  p.setPen(pen);
+//  p.setFont(font);
+//}
 
-void TermRender::_drawCursor(QPainter &p, const Coord &coord, int width) {
-  p.save();
-  p.setPen(QColor("#e0def4"));
-  p.setBrush(QColor("#e0def4"));
-  int x = (coord.x - 1) * _fontWidth + _conf->margins().left();
-  int y = (coord.y - 1) * _fontHeight + _conf->margins().top();
-  p.drawRect(x, y, _fontWidth * width, _fontHeight);
-  p.restore();
-}
+// void TermRender::_drawCursor(QPainter &p, const Coord &coord, int width) {
+//  p.save();
+//  p.setPen(QColor("#e0def4"));
+//  p.setBrush(QColor("#e0def4"));
+//  int x = (coord.x - 1) * _fontWidth + _conf->margins().left();
+//  int y = (coord.y - 1) * _fontHeight + _conf->margins().top();
+//  p.drawRect(x, y, _fontWidth * width, _fontHeight);
+//  p.restore();
+//}
 
 void TermRender::_drawContent(QPainter &p, const Coord &coord,
-                              const CharRowCell &charCell,
-                              const AttrRowCell &attrCell) {
+                              const TextCell &cell) {
   p.save();
-  if (charCell.isNormal()) {
+  if (cell.isNormal()) {
     int x = (coord.x - 1) * _fontWidth + _conf->margins().left();
     int y = (coord.y - 1) * _fontHeight + _conf->margins().top();
-    int w = charCell.uch().width() * _fontWidth;
+    int w = cell.uch().width() * _fontWidth;
     int h = _fontHeight;
-    _setPen(p, attrCell);
-    if (attrCell.isBlink()) {
-      //      qDebug() << "blink:" << _isBlinkShow;
-      if (_isBlinkShow) p.drawText(x, y, w, h, 0, charCell.uch().udata());
-    } else {
-      p.drawText(x, y, w, h, 0, charCell.uch().udata());
-    }
+
+    auto attr = cell.attr();
+
+    // background
+    p.save();
+    auto bgcolor = _tag2color(attr.backColor());
+    p.setPen(bgcolor);
+    p.setBrush(bgcolor);
+    p.drawRect(x, y, w, h);
+    p.restore();
+
+    // styles
+
+    // foreground
+    p.save();
+    auto fgcolor = _tag2color(attr.foreColor());
+    p.setPen(fgcolor);
+    p.drawText(x, y, w, h, 0, cell.uch().udata());
+    p.restore();
   }
-  //  if (charCell.isNull()) {
-  //    p.save();
-  //    int x = (coord.x - 1) * _fontWidth + _profile.margin.left();
-  //    int y = (coord.y - 1) * _fontHeight + _profile.margin.top();
-  //    int w = _fontWidth;
-  //    int h = _fontHeight;
-  //    p.setBrush(Qt::white);
-  //    p.drawRect(x, y, w, h);
-  //    p.restore();
-  //  }
   p.restore();
 }
 
-void TermRender::_drawSelection(QPainter &p, const Coord &coord) {
-  p.save();
-  int x = (coord.x - 1) * _fontWidth + _conf->margins().left();
-  int y = (coord.y - 1) * _fontHeight + _conf->margins().top();
-  int w = _fontWidth;
-  int h = _fontHeight;
-  p.setPen(_conf->selection());
-  p.setBrush(_conf->selection());
-  p.drawRect(x, y, w, h);
-  p.restore();
-}
+// void TermRender::_drawSelection(QPainter &p, const Coord &coord) {
+//  p.save();
+//  int x = (coord.x - 1) * _fontWidth + _conf->margins().left();
+//  int y = (coord.y - 1) * _fontHeight + _conf->margins().top();
+//  int w = _fontWidth;
+//  int h = _fontHeight;
+//  p.setPen(_conf->selection());
+//  p.setBrush(_conf->selection());
+//  p.drawRect(x, y, w, h);
+//  p.restore();
+//}
 
 void TermRender::_drawCoords(QPainter &p, const QVector<Coord> &coords) {
-  const TextBuffer &buffer = _renderData->GetTextBuffer();
+  auto buffer = _term->GetTextBuffer();
   bool blinkFlag = false;
   for (Coord coord : coords) {
-    Coord rpos{coord.x, coord.y + _flagY};
-    if (buffer.IsWithInPos(rpos)) {
-      const Row &row = buffer.GetRow(rpos.y);
-      const CharRowCell &charCell = row.GetCharRow().at(rpos.x);
-      const AttrRowCell &attrCell = row.GetAttrRow().at(rpos.x);
+    if (buffer->isDrawCell(coord.x, coord.y + _flagY)) {
+      auto cell = buffer->GetCell(coord.x, coord.y + _flagY);
 
-      if (_IsInSelection(rpos)) {
-        _drawSelection(p, coord);
-      }
-
-      if (buffer.isCursor(rpos)) {
-        _drawCursor(p, coord, charCell.width());
-      }
-
-      if (attrCell.isBlink() && !blinkFlag) {
-        //        qDebug() << coord.x << coord.y;
+      // blink
+      if (cell.attr().styles().testFlag(TextStyle::Blinking)) {
         blinkFlag = true;
       }
 
-      _drawContent(p, coord, charCell, attrCell);
+      // selection
+      //      if (_IsInSelection(rpos)) {
+      //        _drawSelection(p, coord);
+      //      }
+
+      //      if (buffer.isCursor(rpos)) {
+      //        _drawCursor(p, coord, charCell.width());
+      //      }
+
+      _drawContent(p, coord, cell);
     }
   }
-  //  qDebug() << "blinkflag: " << blinkFlag;
-  if (!blinkFlag) {
-    _timer->stop();
+
+  if (blinkFlag && !_blinkTimer->isActive()) {
+    _blinkTimer->start(600);
+  }
+  if (!blinkFlag && _blinkTimer->isActive()) {
+    _blinkTimer->stop();
   }
 }
 
-bool TermRender::_IsInSelection(const Coord &coord) {
-  if (((coord.y > _start.y) || (coord.y == _start.y && coord.x >= _start.x)) &&
-      ((_end.y > coord.y) || (_end.y == coord.y && _end.x >= coord.x))) {
-    return true;
-  } else {
-    return false;
-  }
-}
+// bool TermRender::_IsInSelection(const Coord &coord) {
+//  if (((coord.y > _start.y) || (coord.y == _start.y && coord.x >= _start.x))
+//  &&
+//      ((_end.y > coord.y) || (_end.y == coord.y && _end.x >= coord.x))) {
+//    return true;
+//  } else {
+//    return false;
+//  }
+//}
 
 QColor TermRender::_tag2color(const TextColor &textColor) {
   switch (textColor.tag()) {
@@ -256,45 +253,45 @@ QColor TermRender::_tag2color(const TextColor &textColor) {
   }
 }
 
-void TermRender::TriggerRedraw(const Rect &rect) {
-  this->TriggerRedraw(rect.x1, rect.y1, rect.x2, rect.y2);
-}
+// void TermRender::TriggerRedraw(const Rect &rect) {
+//  this->TriggerRedraw(rect.x1, rect.y1, rect.x2, rect.y2);
+//}
 
-void TermRender::TriggerRedraw(int x1, int y1, int x2, int y2) {
-  //  QVector<Coord> coords = _calcCoords(x1, y1, x2, y2);
-  //  this->update(_coords2region(coords));
-  this->update();
-}
+// void TermRender::TriggerRedraw(int x1, int y1, int x2, int y2) {
+//  //  QVector<Coord> coords = _calcCoords(x1, y1, x2, y2);
+//  //  this->update(_coords2region(coords));
+//  this->update();
+//}
 
-void TermRender::TriggerRedrawCursor(const Coord *const pcoord) {
-  this->update();
-}
+// void TermRender::TriggerRedrawCursor(const Coord *const pcoord) {
+//  this->update();
+//}
 
-void TermRender::TriggerRedrawAll() { emit this->update(); }
+// void TermRender::TriggerRedrawAll() { emit this->update(); }
 
-void TermRender::TriggerTeardown() {}
+// void TermRender::TriggerTeardown() {}
 
-void TermRender::TriggerSelection() {}
+// void TermRender::TriggerSelection() {}
 
-void TermRender::TriggerScroll() {}
+// void TermRender::TriggerScroll() {}
 
-void TermRender::TriggerScroll(const Coord *const pcoordDelta) {}
+// void TermRender::TriggerScroll(const Coord *const pcoordDelta) {}
 
-void TermRender::TriggerCircling() {}
+// void TermRender::TriggerCircling() {}
 
-void TermRender::TriggerTitleChange() {}
+// void TermRender::TriggerTitleChange() {}
 
 void TermRender::paintEvent(QPaintEvent *event) {
-  Q_UNUSED(event);
+  if (_term != nullptr) {
+    QPainter p(this);
+    p.setFont(_conf->font());
+    p.setRenderHint(QPainter::Antialiasing);
 
-  QPainter p(this);
-  p.setFont(_conf->font());
-  p.setRenderHint(QPainter::Antialiasing);
-
-  const QRegion &region = event->region();
-  for (const QRect &rect : region) {
-    QVector<Coord> coords = _rect2coords(rect);
-    _drawCoords(p, coords);
+    const QRegion &region = event->region();
+    for (const QRect &rect : region) {
+      QVector<Coord> coords = _rect2coords(rect);
+      _drawCoords(p, coords);
+    }
   }
 }
 

@@ -3,8 +3,6 @@
 #include "TextColor.h"
 #include "TextStyle.h"
 
-using namespace NexTerm::Console::Buffer;
-
 class AttrRowCell final {
  public:
   AttrRowCell(const TextColor& foreColor = TextColor::WindowText,

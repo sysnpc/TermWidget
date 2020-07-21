@@ -10,23 +10,6 @@ enum class CursorType : unsigned int {
   FullBox = 0x4       // a full box, similar to legacy with height=100%
 };
 
-struct Coord {
-  int x;
-  int y;
-};
-
-struct Size {
-  int row;
-  int column;
-};
-
-struct Margin {
-  int top;
-  int bottom;
-  int left;
-  int right;
-};
-
 struct Rect {
   int x1;
   int y1;

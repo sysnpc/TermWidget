@@ -4,39 +4,35 @@
 #include "TermRender.h"
 #include "TermViewport.h"
 #include "config/TermConfig.h"
-#include "terminal/ITerminalControl.h"
+//#include "terminal/ITerminalControl.h"
 #include "terminal/ITerminalInput.h"
 #include "terminal/Terminal.h"
 
-using namespace PresudoMicrosoft::Terminal::Core;
+using namespace PresudoMicrosoft::Console::VirtualTerminal;
 
-class TermWidget : public QAbstractScrollArea,
-                   public ITerminalInput,
-                   public ITerminalControl {
+class TermWidget final : public QAbstractScrollArea, public ITerminalInput {
   Q_OBJECT
  public:
   explicit TermWidget(TermConfig *conf = nullptr, QWidget *parent = nullptr);
 
-  void write(const QByteArray &text);
-
   QString GetSelectionText() const;
 
  public slots:
-  void onWrite(const QByteArray &text);
+  void WriteText(const QByteArray &text);
 
  signals:
   void SendSignal(int signal) override;
   void SendString(const QString &str) override;
-  void BracketedPasteMode(bool enabled) override;
-  void SetWindowTitle(const QString &title) override;
+  //  void BracketedPasteMode(bool enabled) override;
+  //  void SetWindowTitle(const QString &title) override;
 
-  void PtyResize(int row, int column);
+  void TermResize(int row, int column);
 
  private slots:
-  void _OnTimeOut();
+  void _OnResizeTimeOut();
 
  private:
-  std::unique_ptr<ITerminalInput> _terminalInput;
+  //  std::unique_ptr<ITerminalInput> _terminalInput;
 
   std::unique_ptr<Terminal> _terminal;
 
@@ -52,9 +48,7 @@ class TermWidget : public QAbstractScrollArea,
   int _fontWidth;
   int _fontHeight;
 
-  bool _traceScroll;
-
-  void _initTerminal();
+  bool _traceScroll = true;
 
   QEvent::Type _lastMouseClickType;
   QDateTime _lastMouseClickTime;
@@ -70,7 +64,7 @@ class TermWidget : public QAbstractScrollArea,
   std::optional<SelectionAnchors> _selection;
   QPoint _singleClickPos;
 
-  std::unique_ptr<QTimer> _timer;
+  std::unique_ptr<QTimer> _resizeTimer;
 
   // QWidget interface
  public:
@@ -90,12 +84,8 @@ class TermWidget : public QAbstractScrollArea,
 
   // ITerminalControl interface
  public:
-  void NotifyHightChange(int height) override;
-  void WarningBell() override;
-  void SendDeviceAttributes(const QString &str) override;
-  void RenderInit() override;
-
-  // ITerminalInput interface
- public:
-  int CalcWidth(const QString &str) override;
+  //  void NotifyHightChange(int height) override;
+  //  void WarningBell() override;
+  //  void SendDeviceAttributes(const QString &str) override;
+  //  void RenderInit() override;
 };

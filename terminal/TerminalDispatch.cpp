@@ -1,622 +1,534 @@
 #include "TerminalDispatch.h"
 
-#include <QTextBoundaryFinder>
+#include <QtGlobal>
 
-TerminalDispatch::TerminalDispatch(ITerminal *terminal)
-    : _terminal{terminal},
-      _foreColor(TextColor::WindowText),
-      _backColor(TextColor::Window),
-      _styles(TextStyle::Normal) {}
+#include "../tools/til/at.h"
 
-void TerminalDispatch::Execute(const wchar_t wchControl) {
-  _WriteBuffer({&wchControl, 1});
+using namespace PresudoMicrosoft::Console::VirtualTerminal;
+
+TerminalDispatch::TerminalDispatch(ITerminal* pTerm) : _pTerm(pTerm) {}
+
+void TerminalDispatch::PrintString(const std::wstring_view string) {
+  if (_termOutput.NeedToTranslate()) {
+    std::wstring buffer;
+    buffer.reserve(string.size());
+    for (auto& wch : string) {
+      buffer.push_back(_termOutput.TranslateKey(wch));
+    }
+    _pTerm->PrintString(buffer);
+  } else {
+    _pTerm->PrintString(string);
+  }
 }
 
 void TerminalDispatch::Print(const wchar_t wchPrintable) {
-  _WriteBuffer({&wchPrintable, 1});
+  const auto wchTranslated = _termOutput.TranslateKey(wchPrintable);
+  // By default the DEL character is meant to be ignored in the same way as a
+  // NUL character. However, it's possible that it could be translated to a
+  // printable character in a 96-character set. This condition makes sure that
+  // a character is only output if the DEL is translated to something else.
+  if (wchTranslated != AsciiChars::DEL) {
+    _pTerm->Print(wchTranslated);
+  }
 }
 
-void TerminalDispatch::PrintString(const std::wstring_view string) {
-  _WriteBuffer(string);
+bool TerminalDispatch::CursorUp(const size_t distance) {
+  return _CursorMovePosition(Offset::Backward(distance), Offset::Unchanged(),
+                             true);
 }
 
-void TerminalDispatch::CursorUp(const size_t distance) {
-  //  TermDispatch::CursorUp(distance);
-  _terminal->CursorUp(distance);
+bool TerminalDispatch::CursorDown(const size_t distance) {
+  return _CursorMovePosition(Offset::Forward(distance), Offset::Unchanged(),
+                             true);
 }
 
-void TerminalDispatch::CursorDown(const size_t distance) {
-  //  TermDispatch::CursorDown(distance);
-  _terminal->CursorDown(distance);
+bool TerminalDispatch::CursorForward(const size_t distance) {
+  return _CursorMovePosition(Offset::Unchanged(), Offset::Forward(distance),
+                             true);
 }
 
-void TerminalDispatch::CursorForward(const size_t distance) {
-  //  TermDispatch::CursorForward(distance);
-  _terminal->CursorForward(distance);
+bool TerminalDispatch::CursorBackward(const size_t distance) {
+  return _CursorMovePosition(Offset::Unchanged(), Offset::Backward(distance),
+                             true);
 }
 
-void TerminalDispatch::CursorBackward(const size_t distance) {
-  //  TermDispatch::CursorBackward(distance);
-  _terminal->CursorBackward(distance);
+bool TerminalDispatch::CursorNextLine(const size_t distance) {
+  return _CursorMovePosition(Offset::Forward(distance), Offset::Absolute(1),
+                             true);
 }
 
-void TerminalDispatch::CursorNextLine(const size_t distance) {
-  TermDispatch::CursorNextLine(distance);
+bool TerminalDispatch::CursorPrevLine(const size_t distance) {
+  return _CursorMovePosition(Offset::Backward(distance), Offset::Absolute(1),
+                             true);
 }
 
-void TerminalDispatch::CursorPrevLine(const size_t distance) {
-  TermDispatch::CursorPrevLine(distance);
+bool TerminalDispatch::CursorHorizontalPositionAbsolute(const size_t column) {
+  return _CursorMovePosition(Offset::Unchanged(), Offset::Absolute(column),
+                             false);
 }
 
-void TerminalDispatch::CursorHorizontalPositionAbsolute(const size_t column) {
-  //  TermDispatch::CursorHorizontalPositionAbsolute(column);
-  _terminal->CursorColumn(column);
+bool TerminalDispatch::VerticalLinePositionAbsolute(const size_t line) {
+  return _CursorMovePosition(Offset::Absolute(line), Offset::Unchanged(),
+                             false);
 }
 
-void TerminalDispatch::VerticalLinePositionAbsolute(const size_t line) {
-  TermDispatch::VerticalLinePositionAbsolute(line);
+bool TerminalDispatch::HorizontalPositionRelative(const size_t distance) {
+  return _CursorMovePosition(Offset::Unchanged(), Offset::Forward(distance),
+                             false);
 }
 
-void TerminalDispatch::HorizontalPositionRelative(const size_t distance) {
-  TermDispatch::HorizontalPositionRelative(distance);
+bool TerminalDispatch::VerticalPositionRelative(const size_t distance) {
+  return _CursorMovePosition(Offset::Forward(distance), Offset::Unchanged(),
+                             false);
 }
 
-void TerminalDispatch::VerticalPositionRelative(const size_t distance) {
-  TermDispatch::VerticalPositionRelative(distance);
+bool TerminalDispatch::CursorPosition(const size_t line, const size_t column) {
+  return _CursorMovePosition(Offset::Absolute(line), Offset::Absolute(column),
+                             false);
 }
 
-void TerminalDispatch::CursorPosition(const size_t line, const size_t column) {
-  //  TermDispatch::CursorPosition(line, column);
-  _terminal->SetCursorPosition(column, line);
+bool TerminalDispatch::CursorSaveState() {}
+
+bool TerminalDispatch::CursorRestoreState() {}
+
+// Routine Description:
+// - DECTCEM - Sets the show/hide visibility status of the cursor.
+// Arguments:
+// - fIsVisible - Turns the cursor rendering on (TRUE) or off (FALSE).
+// Return Value:
+// - True if handled successfully. False otherwise.
+bool TerminalDispatch::CursorVisibility(const bool isVisible) {
+  // This uses a private API instead of the public one, because the public API
+  //      will set the cursor shape back to legacy.
+  return _pTerm->PrivateShowCursor(isVisible);
 }
 
-void TerminalDispatch::CursorSaveState() { TermDispatch::CursorSaveState(); }
+bool TerminalDispatch::EraseInDisplay(const EraseType eraseType) {
+  auto pos = _pTerm->GetCursorPos();
+  auto row = _pTerm->GetRow();
+  auto column = _pTerm->GetColumn();
 
-void TerminalDispatch::CursorRestoreState() {
-  TermDispatch::CursorRestoreState();
-}
-
-void TerminalDispatch::CursorVisibility(const bool isVisible) {
-  TermDispatch::CursorVisibility(isVisible);
-}
-
-void TerminalDispatch::InsertCharacter(const size_t count) {
-  TermDispatch::InsertCharacter(count);
-}
-
-void TerminalDispatch::DeleteCharacter(const size_t count) {
-  TermDispatch::DeleteCharacter(count);
-}
-
-void TerminalDispatch::ScrollUp(const size_t distance) {
-  TermDispatch::ScrollUp(distance);
-}
-
-void TerminalDispatch::ScrollDown(const size_t distance) {
-  TermDispatch::ScrollDown(distance);
-}
-
-void TerminalDispatch::InsertLine(const size_t distance) {
-  //  TermDispatch::InsertLine(distance);
-  _terminal->InsertLine(distance);
-}
-
-void TerminalDispatch::DeleteLine(const size_t distance) {
-  //  TermDispatch::DeleteLine(distance);
-  _terminal->DeleteLine(distance);
-}
-
-void TerminalDispatch::SetColumns(const size_t columns) {
-  //  TermDispatch::SetColumns(columns);
-  _terminal->ResizeColumn(columns);
-}
-
-void TerminalDispatch::SetCursorKeysMode(const bool applicationMode) {
-  //  TermDispatch::SetCursorKeysMode(applicationMode);
-  _terminal->SetCursorKeysMode(applicationMode);
-}
-
-void TerminalDispatch::SetKeypadMode(const bool applicationMode) {
-  //  TermDispatch::SetKeypadMode(applicationMode);
-  _terminal->SetKeypadMode(applicationMode);
-}
-
-void TerminalDispatch::EnableCursorBlinking(const bool enable) {
-  TermDispatch::EnableCursorBlinking(enable);
-}
-
-void TerminalDispatch::SetScreenMode(const bool reverseMode) {
-  TermDispatch::SetScreenMode(reverseMode);
-}
-
-void TerminalDispatch::SetOriginMode(const bool relativeMode) {
-  TermDispatch::SetOriginMode(relativeMode);
-}
-
-void TerminalDispatch::SetAutoWrapMode(const bool wrapAtEOL) {
-  TermDispatch::SetAutoWrapMode(wrapAtEOL);
-}
-
-void TerminalDispatch::SetTopBottomScrollingMargins(const size_t topMargin,
-                                                    const size_t bottomMargin) {
-  //  TermDispatch::SetTopBottomScrollingMargins(topMargin, bottomMargin);
-  _terminal->SetTopBottomMargin(topMargin, bottomMargin);
-}
-
-void TerminalDispatch::WarningBell() {
-  //  TermDispatch::WarningBell();
-  _terminal->WarningBell();
-}
-
-void TerminalDispatch::CarriageReturn() {
-  //  TermDispatch::CarriageReturn();
-  _terminal->CarriageReturn();
-}
-
-void TerminalDispatch::LineFeed(const LineFeedType lineFeedType) {
-  //  TermDispatch::LineFeed(lineFeedType);
-  _terminal->LineFeed(lineFeedType);
-}
-
-void TerminalDispatch::ReverseLineFeed() {
-  //  TermDispatch::ReverseLineFeed();
-  _terminal->ReverseLineFeed();
-}
-
-void TerminalDispatch::SetWindowTitle(std::wstring_view title) {
-  //  TermDispatch::SetWindowTitle(title);
-  QString str = QString::fromWCharArray(title.data(), title.size());
-  _terminal->SetWindowTitle(str);
-}
-
-void TerminalDispatch::UseAlternateScreenBuffer() {
-  //  TermDispatch::UseAlternateScreenBuffer();
-  _terminal->UseAlternateBuffer();
-}
-
-void TerminalDispatch::UseMainScreenBuffer() {
-  //  TermDispatch::UseMainScreenBuffer();
-  _terminal->UseMainBuffer();
-}
-
-void TerminalDispatch::HorizontalTabSet() {
-  //  TermDispatch::HorizontalTabSet();
-  _terminal->HorizontalTabSet();
-}
-
-void TerminalDispatch::ForwardTab(const size_t numTabs) {
-  //  TermDispatch::ForwardTab(numTabs);
-  _terminal->ForwardTab(numTabs);
-}
-
-void TerminalDispatch::BackwardsTab(const size_t numTabs) {
-  //  TermDispatch::BackwardsTab(numTabs);
-  _terminal->BackwardsTab(numTabs);
-}
-
-void TerminalDispatch::TabClear(const size_t clearType) {
-  //  TermDispatch::TabClear(clearType);
-  _terminal->TabClear(clearType);
-}
-
-void TerminalDispatch::EnableDECCOLMSupport(const bool enabled) {
-  TermDispatch::EnableDECCOLMSupport(enabled);
-}
-
-void TerminalDispatch::EnableVT200MouseMode(const bool enabled) {
-  TermDispatch::EnableVT200MouseMode(enabled);
-}
-
-void TerminalDispatch::EnableUTF8ExtendedMouseMode(const bool enabled) {
-  TermDispatch::EnableUTF8ExtendedMouseMode(enabled);
-}
-
-void TerminalDispatch::EnableSGRExtendedMouseMode(const bool enabled) {
-  TermDispatch::EnableSGRExtendedMouseMode(enabled);
-}
-
-void TerminalDispatch::EnableButtonEventMouseMode(const bool enabled) {
-  TermDispatch::EnableButtonEventMouseMode(enabled);
-}
-
-void TerminalDispatch::EnableAnyEventMouseMode(const bool enabled) {
-  TermDispatch::EnableAnyEventMouseMode(enabled);
-}
-
-void TerminalDispatch::EnableAlternateScroll(const bool enabled) {
-  TermDispatch::EnableAlternateScroll(enabled);
-}
-
-void TerminalDispatch::EnableBracketedPasteMode(const bool enabled) {
-  //  TermDispatch::EnableBracketedPasteMode(enabled);
-  _terminal->BracketedPasteMode(enabled);
-}
-
-void TerminalDispatch::SetColorTableEntry(const size_t tableIndex,
-                                          const unsigned long color) {
-  TermDispatch::SetColorTableEntry(tableIndex, color);
-}
-
-void TerminalDispatch::SetDefaultForeground(const unsigned long color) {
-  TermDispatch::SetDefaultForeground(color);
-}
-
-void TerminalDispatch::SetDefaultBackground(const unsigned long color) {
-  TermDispatch::SetDefaultBackground(color);
-}
-
-void TerminalDispatch::EraseInDisplay(const EraseType eraseType) {
-  //  TermDispatch::EraseInDisplay(eraseType);
+  Coord st{1, 1}, mid(pos), ed{column, row};
   switch (eraseType) {
     case EraseType::ToEnd:
-      _terminal->EraseDisplayToEnd();
+      _pTerm->PrivateEraseCell(mid, ed);
       break;
     case EraseType::FromBeginning:
-      _terminal->EraseDisplayToBegin();
+      _pTerm->PrivateEraseCell(st, mid);
       break;
     case EraseType::All:
-      _terminal->EraseDisplayAll();
+      _pTerm->PrivateEraseCell(st, ed);
+      _pTerm->SetCursorPos(Coord{1, 1});
       break;
     case EraseType::Scrollback:
-      _terminal->EraseDisplaySaveLines();
+      _pTerm->PrivateEraseSaveLines();
       break;
-  }
-}
-
-void TerminalDispatch::EraseInLine(const EraseType eraseType) {
-  //  TermDispatch::EraseInLine(eraseType);
-  switch (eraseType) {
-    case EraseType::ToEnd:
-      _terminal->EraseLineToRight();
-      break;
-    case EraseType::FromBeginning:
-      _terminal->EraseLineToLeft();
-      break;
-    case EraseType::All:
-      _terminal->EraseLineAll();
-      break;
-    default:
-      TermDispatch::EraseInLine(eraseType);
-      break;
-  }
-}
-
-void TerminalDispatch::EraseCharacters(const size_t numChars) {
-  TermDispatch::EraseCharacters(numChars);
-}
-
-void TerminalDispatch::SetGraphicsRendition(
-    const std::basic_string_view<DispatchTypes::GraphicsOptions> options) {
-  //  TermDispatch::SetGraphicsRendition(options);
-  GraphicsOptions opt = GraphicsOptions::Off;
-  if (!options.empty()) {
-    opt = options.at(0);
-    switch (opt) {
-      case Off:
-        _foreColor = TextColor::WindowText;
-        _backColor = TextColor::Window;
-        _styles = TextStyle::Normal;
-        break;
-      case BoldBright:
-        _styles.setFlag(TextStyle::Bold, true);
-        break;
-        // The 2 and 5 entries here are for BOTH the extended graphics options,
-        // as well as the Faint/Blink options.
-      case RGBColorOrFaint:  // 2 is also Faint, decreased intensity (ISO 6429).
-        _styles.setFlag(TextStyle::Faint, true);
-        break;
-      case Italics:
-        _styles.setFlag(TextStyle::Italics, true);
-        break;
-      case Underline:
-        _styles.setFlag(TextStyle::Underlined, true);
-        break;
-      case BlinkOrXterm256Index:  // 5 is also Blink (appears as Bold).
-        _styles.setFlag(TextStyle::Blink, true);
-        break;
-      case Negative:  // inverse
-        _styles.setFlag(TextStyle::Inverse, true);
-        break;
-      case Invisible:
-        _styles.setFlag(TextStyle::Invisible, true);
-        break;
-      case CrossedOut:
-        _styles.setFlag(TextStyle::CrossedOut, true);
-        break;
-      case DoublyUnderlined:
-        _styles.setFlag(TextStyle::DoublyUnderlined, true);
-        break;
-      case UnBold:
-        _styles.setFlag(TextStyle::Bold, false);
-        _styles.setFlag(TextStyle::Faint, false);
-        break;
-      case NotItalics:
-        _styles.setFlag(TextStyle::Italics, false);
-        break;
-      case NoUnderline:
-        _styles.setFlag(TextStyle::Underlined, false);
-        break;
-      case Steady:  // _not_ blink
-        _styles.setFlag(TextStyle::Blink, false);
-        break;
-      case Positive:  // _not_ inverse
-        _styles.setFlag(TextStyle::Inverse, false);
-        break;
-      case Visible:  // _not_ invisible
-        _styles.setFlag(TextStyle::Invisible, false);
-        break;
-      case NotCrossedOut:
-        _styles.setFlag(TextStyle::CrossedOut, false);
-        break;
-      case ForegroundBlack:
-        _foreColor = TextColor::Black;
-        break;
-      case ForegroundRed:
-        _foreColor = TextColor::Red;
-        break;
-      case ForegroundGreen:
-        _foreColor = TextColor::Green;
-        break;
-      case ForegroundYellow:
-        _foreColor = TextColor::Yellow;
-        break;
-      case ForegroundBlue:
-        _foreColor = TextColor::Blue;
-        break;
-      case ForegroundMagenta:
-        _foreColor = TextColor::Magenta;
-        break;
-      case ForegroundCyan:
-        _foreColor = TextColor::Cyan;
-        break;
-      case ForegroundWhite:
-        _foreColor = TextColor::White;
-        break;
-      case ForegroundExtended:
-        _foreColor = _RGBColor(options);
-        break;
-      case ForegroundDefault:
-        _foreColor = TextColor::WindowText;
-        break;
-      case BackgroundBlack:
-        _backColor = TextColor::Black;
-        break;
-      case BackgroundRed:
-        _backColor = TextColor::Red;
-        break;
-      case BackgroundGreen:
-        _backColor = TextColor::Green;
-        break;
-      case BackgroundYellow:
-        _backColor = TextColor::Yellow;
-        break;
-      case BackgroundBlue:
-        _backColor = TextColor::Blue;
-        break;
-      case BackgroundMagenta:
-        _backColor = TextColor::Magenta;
-        break;
-      case BackgroundCyan:
-        _backColor = TextColor::Cyan;
-        break;
-      case BackgroundWhite:
-        _backColor = TextColor::White;
-        break;
-      case BackgroundExtended:
-        _backColor = _RGBColor(options);
-        break;
-      case BackgroundDefault:
-        _backColor = TextColor::Window;
-        break;
-      case BrightForegroundBlack:
-        _foreColor = TextColor::Bright_Black;
-        break;
-      case BrightForegroundRed:
-        _foreColor = TextColor::Bright_Red;
-        break;
-      case BrightForegroundGreen:
-        _foreColor = TextColor::Bright_Green;
-        break;
-      case BrightForegroundYellow:
-        _foreColor = TextColor::Bright_Yellow;
-        break;
-      case BrightForegroundBlue:
-        _foreColor = TextColor::Bright_Blue;
-        break;
-      case BrightForegroundMagenta:
-        _foreColor = TextColor::Bright_Magenta;
-        break;
-      case BrightForegroundCyan:
-        _foreColor = TextColor::Bright_Cyan;
-        break;
-      case BrightForegroundWhite:
-        _foreColor = TextColor::Bright_White;
-        break;
-      case BrightBackgroundBlack:
-        _backColor = TextColor::Bright_Black;
-        break;
-      case BrightBackgroundRed:
-        _backColor = TextColor::Bright_Red;
-        break;
-      case BrightBackgroundGreen:
-        _backColor = TextColor::Bright_Green;
-        break;
-      case BrightBackgroundYellow:
-        _backColor = TextColor::Bright_Yellow;
-        break;
-      case BrightBackgroundBlue:
-        _backColor = TextColor::Bright_Blue;
-        break;
-      case BrightBackgroundMagenta:
-        _backColor = TextColor::Bright_Magenta;
-        break;
-      case BrightBackgroundCyan:
-        _backColor = TextColor::Bright_Cyan;
-        break;
-      case BrightBackgroundWhite:
-        _backColor = TextColor::Bright_White;
-        break;
-      default:
-        TermDispatch::SetGraphicsRendition(options);
-        break;
-    }
-  }
-}
-
-void TerminalDispatch::SetPrivateModes(
-    const std::basic_string_view<DispatchTypes::PrivateModeParams> params) {
-  //  TermDispatch::SetPrivateModes(params);
-  if (!params.empty()) {
-    PrivateModeParams param = params.at(0);
-    bool success = _SetResettPrivateMode(param, true);
-    if (!success) {
-      TermDispatch::SetPrivateModes(params);
-    }
-  }
-}
-
-void TerminalDispatch::ResetPrivateModes(
-    const std::basic_string_view<DispatchTypes::PrivateModeParams> params) {
-  //  TermDispatch::ResetPrivateModes(params);
-  if (!params.empty()) {
-    PrivateModeParams param = params.at(0);
-    bool success = _SetResettPrivateMode(param, false);
-    if (!success) {
-      TermDispatch::ResetPrivateModes(params);
-    }
-  }
-}
-
-void TerminalDispatch::DeviceStatusReport(
-    const DispatchTypes::AnsiStatusType statusType) {
-  TermDispatch::DeviceStatusReport(statusType);
-}
-
-void TerminalDispatch::DeviceAttributes() {
-  //  TermDispatch::DeviceAttributes();
-  // See: http://vt100.net/docs/vt100-ug/chapter3.html#DA
-  _terminal->SendDeviceAttributes("\x1b[?1;0c");
-}
-
-void TerminalDispatch::DesignateCharset(const wchar_t wchCharset) {
-  TermDispatch::DesignateCharset(wchCharset);
-}
-
-void TerminalDispatch::SoftReset() { TermDispatch::SoftReset(); }
-
-void TerminalDispatch::HardReset() { TermDispatch::HardReset(); }
-
-void TerminalDispatch::ScreenAlignmentPattern() {
-  //  TermDispatch::ScreenAlignmentPattern();
-  _terminal->ScreenAlignmentPattern();
-}
-
-void TerminalDispatch::SetCursorStyle(
-    const DispatchTypes::CursorStyle cursorStyle) {
-  TermDispatch::SetCursorStyle(cursorStyle);
-}
-
-void TerminalDispatch::SetCursorColor(const unsigned long color) {
-  TermDispatch::SetCursorColor(color);
-}
-
-void TerminalDispatch::WindowManipulation(
-    const DispatchTypes::WindowManipulationType function,
-    const std::basic_string_view<size_t> parameters) {
-  TermDispatch::WindowManipulation(function, parameters);
-}
-
-QStringList TerminalDispatch::_GraphemeSplit(const QString &str) {
-  QTextBoundaryFinder tbf(QTextBoundaryFinder::Grapheme, str);
-  QStringList strs;
-  int pre = 0;
-  int next = tbf.toNextBoundary();
-  while (next != -1) {
-    strs.append(str.mid(pre, next - pre));
-    pre = next;
-    next = tbf.toNextBoundary();
-  }
-  return strs;
-}
-
-void TerminalDispatch::_WriteBuffer(const std::wstring_view &stringView) {
-  QString str = QString::fromWCharArray(stringView.data(), stringView.size());
-  QStringList uchs = _GraphemeSplit(str);
-
-  std::vector<UAttrCharCell> ucells;
-
-  for (const QString &ch : uchs) {
-    int w = _terminal->CalcWidth(ch);
-    UChar uch(ch, w);
-    UAttrCharCell ucell(uch, _foreColor, _backColor, _styles);
-    ucells.push_back(ucell);
-  }
-
-  _terminal->WriteCell(ucells);
-}
-
-TextColor TerminalDispatch::_RGBColor(
-    const std::basic_string_view<GraphicsOptions> options) {
-  TermDispatch::SetGraphicsRendition(options);
-  return TextColor::Black;
-}
-
-bool TerminalDispatch::_SetResettPrivateMode(const PrivateModeParams param,
-                                             bool enabled) {
-  switch (param) {
-    case DECCKM_CursorKeysMode:
-      // set - Enable Application Mode, reset - Normal mode
-      SetCursorKeysMode(enabled);
-      break;
-    case DECCOLM_SetNumberOfColumns:
-      SetColumns(enabled ? 132 : 80);
-      break;
-    case DECSCNM_ScreenMode:
-      SetScreenMode(enabled);
-      break;
-    case DECOM_OriginMode:
-      // The cursor is also moved to the new home position when the origin mode
-      // is set or reset.
-      SetOriginMode(enabled);
-      break;
-    case DECAWM_AutoWrapMode:
-      SetAutoWrapMode(enabled);
-      break;
-    case ATT610_StartCursorBlink:
-      EnableCursorBlinking(enabled);
-      break;
-    case DECTCEM_TextCursorEnableMode:
-      CursorVisibility(enabled);
-      break;
-    case XTERM_EnableDECCOLMSupport:
-      EnableDECCOLMSupport(enabled);
-      break;
-    case VT200_MOUSE_MODE:
-      EnableVT200MouseMode(enabled);
-      break;
-    case BUTTON_EVENT_MOUSE_MODE:
-      EnableButtonEventMouseMode(enabled);
-      break;
-    case ANY_EVENT_MOUSE_MODE:
-      EnableAnyEventMouseMode(enabled);
-      break;
-    case UTF8_EXTENDED_MODE:
-      EnableUTF8ExtendedMouseMode(enabled);
-      break;
-    case SGR_EXTENDED_MODE:
-      EnableSGRExtendedMouseMode(enabled);
-      break;
-    case ALTERNATE_SCROLL:
-      EnableAlternateScroll(enabled);
-      break;
-    case ASB_AlternateScreenBuffer:
-      enabled ? UseAlternateScreenBuffer() : UseMainScreenBuffer();
-      break;
-    case BRACKETED_PASTE_MODE:
-      EnableBracketedPasteMode(enabled);
-      break;
-    default:
-      return false;
   }
   return true;
 }
+
+bool TerminalDispatch::EraseInLine(const EraseType eraseType) {
+  auto pos = _pTerm->GetCursorPos();
+  auto column = _pTerm->GetColumn();
+  Coord st{1, pos.y}, mid(pos), ed{column, pos.y};
+  switch (eraseType) {
+    case EraseType::FromBeginning:
+      _pTerm->PrivateEraseCell(st, mid);
+      break;
+    case EraseType::ToEnd:
+      _pTerm->PrivateEraseCell(mid, ed);
+      break;
+    case EraseType::All:
+      _pTerm->PrivateEraseCell(st, ed);
+      break;
+    default:
+      return false;
+      break;
+  }
+  return true;
+}
+
+bool TerminalDispatch::EraseCharacters(const size_t numChars) {}
+
+bool TerminalDispatch::InsertCharacter(const size_t count) {}
+
+bool TerminalDispatch::DeleteCharacter(const size_t count) {}
+
+bool TerminalDispatch::SetGraphicsRendition(
+    const std::basic_string_view<GraphicsOptions> options) {
+  TextAttribute attr;
+  auto cursor = _pTerm->PrivateGetTextCursor();
+
+  if (options.size() > 0) {
+    auto opt = til::at(options, 0);
+    switch (opt) {
+      case Off:
+        cursor->SetDefaultForeground();
+        cursor->SetDefaultBackground();
+        cursor->SetDefaultStyles();
+        break;
+      case ForegroundDefault:
+        cursor->SetDefaultForeground();
+        break;
+      case BackgroundDefault:
+        cursor->SetDefaultBackground();
+        break;
+      case BoldBright:
+        cursor->SetBold(true);
+        break;
+      case RGBColorOrFaint:
+        cursor->SetFaint(true);
+        break;
+      case NotBoldOrFaint:
+        cursor->SetBold(false);
+        cursor->SetFaint(false);
+        break;
+      case Italics:
+        cursor->SetItalic(true);
+        break;
+      case NotItalics:
+        cursor->SetItalic(false);
+        break;
+      case BlinkOrXterm256Index:
+        cursor->SetBlinking(true);
+        break;
+      case Steady:
+        cursor->SetBlinking(false);
+        break;
+      case Invisible:
+        cursor->SetInvisible(true);
+        break;
+      case Visible:
+        cursor->SetInvisible(false);
+        break;
+      case CrossedOut:
+        cursor->SetCrossedOut(true);
+        break;
+      case DoublyUnderlined:
+        cursor->SetDoublyUnderlined(true);
+        break;
+      case NotCrossedOut:
+        cursor->SetCrossedOut(false);
+        break;
+      case Negative:
+        cursor->SetReverseVideo(true);
+        break;
+      case Positive:
+        cursor->SetReverseVideo(false);
+        break;
+      case Underline:
+        cursor->SetUnderlined(true);
+        break;
+      case NoUnderline:
+        cursor->SetUnderlined(false);
+        break;
+      case Overline:
+        cursor->SetOverlined(true);
+        break;
+      case NoOverline:
+        cursor->SetOverlined(false);
+        break;
+      case ForegroundBlack:
+        cursor->SetIndexedForeground(TextColor::Black);
+        break;
+      case ForegroundBlue:
+        cursor->SetIndexedForeground(TextColor::Blue);
+        break;
+      case ForegroundGreen:
+        cursor->SetIndexedForeground(TextColor::Green);
+        break;
+      case ForegroundCyan:
+        cursor->SetIndexedForeground(TextColor::Cyan);
+        break;
+      case ForegroundRed:
+        cursor->SetIndexedForeground(TextColor::Red);
+        break;
+      case ForegroundMagenta:
+        cursor->SetIndexedForeground(TextColor::Magenta);
+        break;
+      case ForegroundYellow:
+        cursor->SetIndexedForeground(TextColor::Yellow);
+        break;
+      case ForegroundWhite:
+        cursor->SetIndexedForeground(TextColor::White);
+        break;
+      case BackgroundBlack:
+        cursor->SetIndexedBackground(TextColor::Black);
+        break;
+      case BackgroundBlue:
+        cursor->SetIndexedBackground(TextColor::Blue);
+        break;
+      case BackgroundGreen:
+        cursor->SetIndexedBackground(TextColor::Green);
+        break;
+      case BackgroundCyan:
+        cursor->SetIndexedBackground(TextColor::Cyan);
+        break;
+      case BackgroundRed:
+        cursor->SetIndexedBackground(TextColor::Red);
+        break;
+      case BackgroundMagenta:
+        cursor->SetIndexedBackground(TextColor::Magenta);
+        break;
+      case BackgroundYellow:
+        cursor->SetIndexedBackground(TextColor::Yellow);
+        break;
+      case BackgroundWhite:
+        cursor->SetIndexedBackground(TextColor::White);
+        break;
+      case BrightForegroundBlack:
+        cursor->SetIndexedForeground(TextColor::Bright_Black);
+        break;
+      case BrightForegroundBlue:
+        cursor->SetIndexedForeground(TextColor::Bright_Blue);
+        break;
+      case BrightForegroundGreen:
+        cursor->SetIndexedForeground(TextColor::Bright_Green);
+        break;
+      case BrightForegroundCyan:
+        cursor->SetIndexedForeground(TextColor::Bright_Cyan);
+        break;
+      case BrightForegroundRed:
+        cursor->SetIndexedForeground(TextColor::Bright_Red);
+        break;
+      case BrightForegroundMagenta:
+        cursor->SetIndexedForeground(TextColor::Bright_Magenta);
+        break;
+      case BrightForegroundYellow:
+        cursor->SetIndexedForeground(TextColor::Bright_Yellow);
+        break;
+      case BrightForegroundWhite:
+        cursor->SetIndexedForeground(TextColor::Bright_White);
+        break;
+      case BrightBackgroundBlack:
+        cursor->SetIndexedBackground(TextColor::Bright_Black);
+        break;
+      case BrightBackgroundBlue:
+        cursor->SetIndexedBackground(TextColor::Bright_Blue);
+        break;
+      case BrightBackgroundGreen:
+        cursor->SetIndexedBackground(TextColor::Bright_Green);
+        break;
+      case BrightBackgroundCyan:
+        cursor->SetIndexedBackground(TextColor::Bright_Cyan);
+        break;
+      case BrightBackgroundRed:
+        cursor->SetIndexedBackground(TextColor::Bright_Red);
+        break;
+      case BrightBackgroundMagenta:
+        cursor->SetIndexedBackground(TextColor::Bright_Magenta);
+        break;
+      case BrightBackgroundYellow:
+        cursor->SetIndexedBackground(TextColor::Bright_Yellow);
+        break;
+      case BrightBackgroundWhite:
+        cursor->SetIndexedBackground(TextColor::Bright_White);
+        break;
+      case ForegroundExtended:
+        //        i += _SetRgbColorsHelper(options.subspan(i + 1), attr, true);
+        break;
+      case BackgroundExtended:
+        //        i += _SetRgbColorsHelper(options.subspan(i + 1), attr, false);
+        break;
+    }
+  }
+
+  return true;
+}
+
+bool TerminalDispatch::DeviceStatusReport(
+    const DispatchTypes::AnsiStatusType statusType) {}
+
+bool TerminalDispatch::DeviceAttributes() {}
+
+bool TerminalDispatch::Vt52DeviceAttributes() {}
+
+// Routine Description:
+// - SU - Pans the window DOWN by given distance (distance new lines appear at
+// the bottom of the screen) Arguments:
+// - distance - Distance to move
+// Return Value:
+// - True if handled successfully. False otherwise.
+bool TerminalDispatch::ScrollUp(const size_t distance) {
+  return _pTerm->PrivateScrollUp(distance);
+}
+
+// Routine Description:
+// - SD - Pans the window UP by given distance (distance new lines appear at the
+// top of the screen) Arguments:
+// - distance - Distance to move
+// Return Value:
+// - True if handled successfully. False otherwise.
+bool TerminalDispatch::ScrollDown(const size_t distance) {
+  return _pTerm->PrivateScrollDown(distance);
+}
+
+bool TerminalDispatch::InsertLine(const size_t distance) {}
+
+bool TerminalDispatch::DeleteLine(const size_t distance) {}
+
+bool TerminalDispatch::SetColumns(const size_t columns) {}
+
+bool TerminalDispatch::SetPrivateModes(
+    const std::basic_string_view<DispatchTypes::PrivateModeParams> params) {}
+
+bool TerminalDispatch::ResetPrivateModes(
+    const std::basic_string_view<DispatchTypes::PrivateModeParams> params) {}
+
+bool TerminalDispatch::SetCursorKeysMode(const bool applicationMode) {}
+
+bool TerminalDispatch::SetKeypadMode(const bool applicationMode) {}
+
+bool TerminalDispatch::EnableWin32InputMode(const bool win32InputMode) {}
+
+bool TerminalDispatch::EnableCursorBlinking(const bool enable) {}
+
+bool TerminalDispatch::SetAnsiMode(const bool ansiMode) {}
+
+bool TerminalDispatch::SetScreenMode(const bool reverseMode) {}
+
+bool TerminalDispatch::SetOriginMode(const bool relativeMode) noexcept {}
+
+bool TerminalDispatch::SetAutoWrapMode(const bool wrapAtEOL) {
+  return _pTerm->PrivateSetAutoWrapMode(wrapAtEOL);
+}
+
+bool TerminalDispatch::SetTopBottomScrollingMargins(const size_t topMargin,
+                                                    const size_t bottomMargin) {
+  
+}
+
+bool TerminalDispatch::WarningBell() { return _pTerm->PrivateWarningBell(); }
+
+// Routine Description:
+// - CR - Performs a carriage return.
+//    Moves the cursor to the leftmost column.
+// Arguments:
+// - None
+// Return Value:
+// - True if handled successfully. False otherwise.
+bool TerminalDispatch::CarriageReturn() {
+  return _CursorMovePosition(Offset::Unchanged(), Offset::Absolute(1), true);
+}
+
+// Routine Description:
+// - IND/NEL - Performs a line feed, possibly preceded by carriage return.
+//    Moves the cursor down one line, and possibly also to the leftmost column.
+// Arguments:
+// - lineFeedType - Specify whether a carriage return should be performed as
+// well. Return Value:
+// - True if handled successfully. False otherwise.
+bool TerminalDispatch::LineFeed(const LineFeedType lineFeedType) {
+  switch (lineFeedType) {
+    case DispatchTypes::LineFeedType::DependsOnMode:
+      return _pTerm->PrivateLineFeed(_pTerm->PrivateGetLineFeedMode());
+    case DispatchTypes::LineFeedType::WithoutReturn:
+      return _pTerm->PrivateLineFeed(false);
+    case DispatchTypes::LineFeedType::WithReturn:
+      return _pTerm->PrivateLineFeed(true);
+    default:
+      return false;
+  }
+}
+
+bool TerminalDispatch::ReverseLineFeed() {}
+
+bool TerminalDispatch::SetWindowTitle(const std::wstring_view title) {}
+
+bool TerminalDispatch::UseAlternateScreenBuffer() {}
+
+bool TerminalDispatch::UseMainScreenBuffer() {}
+
+bool TerminalDispatch::HorizontalTabSet() {}
+
+bool TerminalDispatch::ForwardTab(const size_t numTabs) {}
+
+bool TerminalDispatch::BackwardsTab(const size_t numTabs) {}
+
+bool TerminalDispatch::TabClear(const size_t clearType) {}
+
+bool TerminalDispatch::DesignateCodingSystem(const wchar_t codingSystem) {}
+
+bool TerminalDispatch::Designate94Charset(
+    const size_t gsetNumber, const std::pair<wchar_t, wchar_t> charset) {}
+
+bool TerminalDispatch::Designate96Charset(
+    const size_t gsetNumber, const std::pair<wchar_t, wchar_t> charset) {}
+
+bool TerminalDispatch::LockingShift(const size_t gsetNumber) {}
+
+bool TerminalDispatch::LockingShiftRight(const size_t gsetNumber) {}
+
+bool TerminalDispatch::SingleShift(const size_t gsetNumber) {}
+
+bool TerminalDispatch::SoftReset() {}
+
+bool TerminalDispatch::HardReset() {}
+
+bool TerminalDispatch::ScreenAlignmentPattern() {}
+
+bool TerminalDispatch::EnableDECCOLMSupport(const bool enabled) noexcept {}
+
+bool TerminalDispatch::EnableVT200MouseMode(const bool enabled) {}
+
+bool TerminalDispatch::EnableUTF8ExtendedMouseMode(const bool enabled) {}
+
+bool TerminalDispatch::EnableSGRExtendedMouseMode(const bool enabled) {}
+
+bool TerminalDispatch::EnableButtonEventMouseMode(const bool enabled) {}
+
+bool TerminalDispatch::EnableAnyEventMouseMode(const bool enabled) {}
+
+bool TerminalDispatch::EnableAlternateScroll(const bool enabled) {}
+
+bool TerminalDispatch::SetCursorStyle(
+    const DispatchTypes::CursorStyle cursorStyle) {}
+
+bool TerminalDispatch::SetCursorColor(const COLORREF cursorColor) {}
+
+bool TerminalDispatch::SetClipboard(const std::wstring_view content) noexcept {}
+
+bool TerminalDispatch::SetColorTableEntry(const size_t tableIndex,
+                                          const DWORD color) {}
+
+bool TerminalDispatch::SetDefaultForeground(const DWORD color) {}
+
+bool TerminalDispatch::SetDefaultBackground(const DWORD color) {}
+
+bool TerminalDispatch::WindowManipulation(
+    const DispatchTypes::WindowManipulationType function,
+    const std::basic_string_view<size_t> parameters) {}
+
+// Routine Description:
+// - Generalizes cursor movement to a specific position, which can be absolute
+// or relative. Arguments:
+// - rowOffset - The row to move to
+// - colOffset - The column to move to
+// - clampInMargins - Should the position be clamped within the scrolling
+// margins Return Value:
+// - True if handled successfully. False otherwise.
+bool TerminalDispatch::_CursorMovePosition(
+    const TerminalDispatch::Offset rowOffset,
+    const TerminalDispatch::Offset colOffset, const bool clampInMargins) const {
+  Coord pos = _pTerm->GetCursorPos();
+  int x = pos.x, y = pos.y;
+  int row = _pTerm->GetRow(), column = _pTerm->GetColumn();
+  ScrollMargin margin = _pTerm->GetScrollMargin();
+
+  if (colOffset.IsAbsolute) {
+    x = 0;
+  }
+  if (clampInMargins) {
+    x = std::clamp(x + colOffset.Value, margin.Left, margin.Right);
+    y = std::clamp(y + rowOffset.Value, margin.Top, margin.Bottom);
+
+  } else {
+    x = std::clamp(x + colOffset.Value, 1, column);
+    y = std::clamp(y + rowOffset.Value, 1, row);
+  }
+  const Coord newPos = {x, y};
+  return _pTerm->SetCursorPos(newPos);
+}
+
+bool TerminalDispatch::_ScrollMovement(
+    const TerminalDispatch::ScrollDirection dir, const size_t distance) const {}

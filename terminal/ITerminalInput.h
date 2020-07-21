@@ -12,14 +12,13 @@ class ITerminalInput {
 
   void SetCursorKeysMode(bool enabled);
   void SetKeypadMode(bool enabled);
-  virtual int CalcWidth(const QString &str) = 0;
 
  protected:
   bool HandleKeyEvent(QKeyEvent *event);
 
  private:
-  bool _keypadApplicationMode;
-  bool _cursorKeysMode;
+  bool _keypadApplicationMode = false;
+  bool _cursorKeysMode = false;
 
   const QHash<Qt::Key, QString> &_GetKeyMapping(QKeyEvent *event);
   bool _isCursorKey(QKeyEvent *event);
